@@ -1,0 +1,95 @@
+name: trendyeye
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-trendy}
+      POSTGRES_USER: ${POSTGRES_USER:-trendy}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-trendy-local-password}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-trendy} -d ${POSTGRES_DB:-trendy}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  rabbitmq:
+    image: rabbitmq:4-alpine
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-trendy}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-trendy-local-password}
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  api:
+    build:
+      context: ./backend
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DATABASE_URL: postgresql://${POSTGRES_USER:-trendy}:${POSTGRES_PASSWORD:-trendy-local-password}@postgres:5432/${POSTGRES_DB:-trendy}
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:-trendy}:${RABBITMQ_PASSWORD:-trendy-local-password}@rabbitmq:5672
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:-local-only-change-this-secret}
+      JWT_ACCESS_TTL: ${JWT_ACCESS_TTL:-15m}
+      REFRESH_TOKEN_DAYS: ${REFRESH_TOKEN_DAYS:-30}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      SEED_ADMIN_EMAIL: ${SEED_ADMIN_EMAIL:-admin@trendy.local}
+      SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:-local-only-change-this-password}
+    ports:
+      - "127.0.0.1:${API_PORT:-3000}:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: ["sh", "-c", "npm run seed && npm run start:prod"]
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3000/api/v1/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 20s
+
+  worker:
+    build:
+      context: ./backend
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://${POSTGRES_USER:-trendy}:${POSTGRES_PASSWORD:-trendy-local-password}@postgres:5432/${POSTGRES_DB:-trendy}
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:-trendy}:${RABBITMQ_PASSWORD:-trendy-local-password}@rabbitmq:5672
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      api:
+        condition: service_healthy
+    command: ["npm", "run", "start:worker"]
+
+  web:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_BASE_URL: /api/v1
+        VITE_GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+    restart: unless-stopped
+    ports:
+      - "${WEB_PORT:-4174}:80"
+    depends_on:
+      api:
+        condition: service_healthy
+
+volumes:
+  postgres-data:
+  rabbitmq-data:

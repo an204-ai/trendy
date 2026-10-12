@@ -1,0 +1,13 @@
+node_modules/
+dist/
+.pnpm-store/
+.DS_Store
+.env
+backend/node_modules/
+backend/dist/
+backend/coverage/
+frontend/node_modules/
+frontend/dist/
+frontend/.pnpm-store/
+.vite/
+*.tsbuildinfo

@@ -1,0 +1,279 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String          @id @default(uuid()) @db.Uuid
+  email         String          @unique @db.VarChar(254)
+  passwordHash  String          @db.VarChar(128)
+  googleSubject String?         @unique @db.VarChar(255)
+  fullName      String          @db.VarChar(120)
+  phone         String?         @db.VarChar(32)
+  role          String          @default("CUSTOMER") @db.VarChar(16)
+  active        Boolean         @default(true)
+  createdAt     DateTime        @default(now()) @db.Timestamptz
+  updatedAt     DateTime        @updatedAt @db.Timestamptz
+
+  sessions      RefreshSession[]
+  orders        CustomerOrder[]
+  conversations Conversation[]
+  messages      ChatMessage[]
+
+  @@map("User")
+}
+
+model RefreshSession {
+  id         String    @id @default(uuid()) @db.Uuid
+  userId     String    @db.Uuid
+  tokenHash  String    @unique @db.VarChar(64)
+  expiresAt  DateTime  @db.Timestamptz
+  revokedAt  DateTime? @db.Timestamptz
+  userAgent  String?   @db.VarChar(300)
+  createdAt  DateTime  @default(now()) @db.Timestamptz
+
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("RefreshSession")
+}
+
+model ProductCategory {
+  id          String                @id @db.VarChar(80)
+  title       String                @db.VarChar(120)
+  label       String?               @db.VarChar(160)
+  parentId    String?               @db.VarChar(80)
+  sortOrder   Int                   @default(0)
+  active      Boolean               @default(true)
+
+  parent      ProductCategory?      @relation("CategoryHierarchy", fields: [parentId], references: [id], onDelete: Cascade)
+  children    ProductCategory[]     @relation("CategoryHierarchy")
+  productLinks ProductCategoryLink[]
+
+  @@map("ProductCategory")
+}
+
+model Product {
+  id             String                @id @default(uuid()) @db.Uuid
+  code           String                @unique @db.VarChar(48)
+  slug           String                @unique @db.VarChar(120)
+  name           String                @db.VarChar(160)
+  sku            String                @unique @db.VarChar(80)
+  price          Int
+  description    String?               @db.Text
+  image          String                @db.Text
+  front          String?               @db.Text
+  specifications Json?
+  active         Boolean               @default(true)
+  createdAt      DateTime              @default(now()) @db.Timestamptz
+  updatedAt      DateTime              @updatedAt @db.Timestamptz
+
+  variants       ProductVariant[]
+  images         ProductImage[]
+  categoryLinks  ProductCategoryLink[]
+
+  @@map("Product")
+}
+
+model ProductVariant {
+  id          String   @id @default(uuid()) @db.Uuid
+  productId   String   @db.Uuid
+  sku         String   @unique @db.VarChar(80)
+  name        String   @db.VarChar(120)
+  swatch      String?  @db.VarChar(24)
+  price       Int?
+  stockOnHand Int?
+  image       String?  @db.Text
+  active      Boolean  @default(true)
+
+  product     Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@map("ProductVariant")
+}
+
+model ProductImage {
+  id        String   @id @default(uuid()) @db.Uuid
+  productId String   @db.Uuid
+  variantId String?  @db.Uuid
+  url       String   @db.Text
+  alt       String?  @db.VarChar(180)
+  position  Int      @default(0)
+
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@map("ProductImage")
+}
+
+model ProductCategoryLink {
+  productId  String          @db.Uuid
+  categoryId String          @db.VarChar(80)
+
+  product    Product         @relation(fields: [productId], references: [id], onDelete: Cascade)
+  category   ProductCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@id([productId, categoryId])
+  @@map("ProductCategoryLink")
+}
+
+model CustomerOrder {
+  id             String               @id @default(uuid()) @db.Uuid
+  orderCode      String               @unique @db.VarChar(32)
+  customerId     String               @db.Uuid
+  idempotencyKey String?              @db.VarChar(100)
+  status         String               @default("RECEIVED") @db.VarChar(32)
+  paymentMethod  String               @default("COD") @db.VarChar(8)
+  paymentStatus  String               @default("UNPAID") @db.VarChar(16)
+  subtotal       Int
+  shippingFee    Int                  @default(0)
+  total          Int
+  recipientName  String               @db.VarChar(120)
+  email          String               @db.VarChar(254)
+  phone          String               @db.VarChar(32)
+  addressLine    String               @db.VarChar(255)
+  ward           String?              @db.VarChar(120)
+  district       String?              @db.VarChar(120)
+  province       String               @db.VarChar(120)
+  country        String               @default("Việt Nam") @db.VarChar(80)
+  customerNote   String?              @db.Text
+  carrier        String?              @db.VarChar(100)
+  trackingNumber String?              @db.VarChar(100)
+  deletedAt      DateTime?            @db.Timestamptz
+  createdAt      DateTime             @default(now()) @db.Timestamptz
+  updatedAt      DateTime             @updatedAt @db.Timestamptz
+
+  customer       User                 @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  items          OrderItem[]
+  history        OrderStatusHistory[]
+  transactions   OrderTransaction[]
+
+  @@index([customerId, createdAt])
+  @@index([status, createdAt])
+  @@map("CustomerOrder")
+}
+
+model OrderItem {
+  id          String        @id @default(uuid()) @db.Uuid
+  orderId     String        @db.Uuid
+  productId   String?       @db.Uuid
+  variantId   String?       @db.Uuid
+  sku         String        @db.VarChar(80)
+  productCode String        @db.VarChar(48)
+  productName String        @db.VarChar(160)
+  variantName String?       @db.VarChar(120)
+  unitPrice   Int
+  quantity    Int
+  lineTotal   Int
+
+  order       CustomerOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@map("OrderItem")
+}
+
+model OrderStatusHistory {
+  id          String        @id @default(uuid()) @db.Uuid
+  orderId     String        @db.Uuid
+  fromStatus  String?       @db.VarChar(32)
+  toStatus    String        @db.VarChar(32)
+  actorUserId String?       @db.Uuid
+  note        String?       @db.Text
+  createdAt   DateTime      @default(now()) @db.Timestamptz
+
+  order       CustomerOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId, createdAt])
+  @@map("OrderStatusHistory")
+}
+
+model OrderTransaction {
+  id          String        @id @default(uuid()) @db.Uuid
+  orderId     String        @db.Uuid
+  type        String        @db.VarChar(32)
+  status      String        @db.VarChar(20)
+  amount      Int
+  reference   String?       @db.VarChar(120)
+  note        String?       @db.Text
+  actorUserId String?       @db.Uuid
+  createdAt   DateTime      @default(now()) @db.Timestamptz
+
+  order       CustomerOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId, createdAt])
+  @@map("OrderTransaction")
+}
+
+model Promotion {
+  id              String    @id @default(uuid()) @db.Uuid
+  name            String    @db.VarChar(160)
+  code            String    @unique @db.VarChar(48)
+  discountType    String    @db.VarChar(12)
+  discountValue   Int
+  minimumOrder    Int       @default(0)
+  maximumDiscount Int?
+  usageLimit      Int?
+  usageCount      Int       @default(0)
+  startsAt        DateTime  @db.Timestamptz
+  endsAt          DateTime  @db.Timestamptz
+  active          Boolean   @default(true)
+  createdBy       String?   @db.Uuid
+  createdAt       DateTime  @default(now()) @db.Timestamptz
+  updatedAt       DateTime  @updatedAt @db.Timestamptz
+
+  @@map("Promotion")
+}
+
+model Conversation {
+  id            String        @id @default(uuid()) @db.Uuid
+  customerId    String        @db.Uuid
+  status        String        @default("OPEN") @db.VarChar(16)
+  lastMessageAt DateTime?     @db.Timestamptz
+  createdAt     DateTime      @default(now()) @db.Timestamptz
+  updatedAt     DateTime      @updatedAt @db.Timestamptz
+
+  customer      User          @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  messages      ChatMessage[]
+
+  @@index([customerId, status])
+  @@map("Conversation")
+}
+
+model ChatMessage {
+  id             String       @id @default(uuid()) @db.Uuid
+  conversationId String       @db.Uuid
+  senderUserId   String       @db.Uuid
+  body           String       @db.Text
+  readByStaff    Boolean      @default(false)
+  readByCustomer Boolean      @default(false)
+  createdAt      DateTime     @default(now()) @db.Timestamptz
+
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender         User         @relation(fields: [senderUserId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, createdAt])
+  @@map("ChatMessage")
+}
+
+model OutboxEvent {
+  id          String    @id @default(uuid()) @db.Uuid
+  eventName   String    @db.VarChar(80)
+  aggregateId String    @db.Uuid
+  payload     Json
+  attempts    Int       @default(0)
+  lastError   String?   @db.Text
+  publishedAt DateTime? @db.Timestamptz
+  createdAt   DateTime  @default(now()) @db.Timestamptz
+
+  @@index([publishedAt, createdAt])
+  @@map("OutboxEvent")
+}
+
+model ProcessedMessage {
+  id          String   @id @db.VarChar(64)
+  eventName   String   @db.VarChar(80)
+  processedAt DateTime @default(now()) @db.Timestamptz
+
+  @@map("ProcessedMessage")
+}
+
