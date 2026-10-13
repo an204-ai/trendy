@@ -12,6 +12,37 @@ function getAdminPasswordHash(password) {
 async function main() {
   console.log("🌱 Bắt đầu kiểm tra và cập nhật database TrendyEye...");
 
+  try {
+    await prisma.$executeRawUnsafe(`
+      DO $$
+      BEGIN
+        ALTER TABLE "User" ALTER COLUMN "id" SET DEFAULT gen_random_uuid();
+        ALTER TABLE "RefreshSession" ALTER COLUMN "id" SET DEFAULT gen_random_uuid();
+        ALTER TABLE "Product" ALTER COLUMN "id" SET DEFAULT gen_random_uuid();
+        ALTER TABLE "ProductVariant" ALTER COLUMN "id" SET DEFAULT gen_random_uuid();
+        ALTER TABLE "ProductImage" ALTER COLUMN "id" SET DEFAULT gen_random_uuid();
+        ALTER TABLE "CustomerOrder" ALTER COLUMN "id" SET DEFAULT gen_random_uuid();
+        ALTER TABLE "OrderItem" ALTER COLUMN "id" SET DEFAULT gen_random_uuid();
+        ALTER TABLE "OrderStatusHistory" ALTER COLUMN "id" SET DEFAULT gen_random_uuid();
+        ALTER TABLE "OrderTransaction" ALTER COLUMN "id" SET DEFAULT gen_random_uuid();
+        ALTER TABLE "Promotion" ALTER COLUMN "id" SET DEFAULT gen_random_uuid();
+        ALTER TABLE "Conversation" ALTER COLUMN "id" SET DEFAULT gen_random_uuid();
+        ALTER TABLE "ChatMessage" ALTER COLUMN "id" SET DEFAULT gen_random_uuid();
+        ALTER TABLE "OutboxEvent" ALTER COLUMN "id" SET DEFAULT gen_random_uuid();
+        ALTER TABLE "User" ALTER COLUMN "updatedAt" SET DEFAULT now();
+        ALTER TABLE "Product" ALTER COLUMN "updatedAt" SET DEFAULT now();
+        ALTER TABLE "CustomerOrder" ALTER COLUMN "updatedAt" SET DEFAULT now();
+        ALTER TABLE "Promotion" ALTER COLUMN "updatedAt" SET DEFAULT now();
+        ALTER TABLE "Conversation" ALTER COLUMN "updatedAt" SET DEFAULT now();
+      EXCEPTION WHEN OTHERS THEN
+        NULL;
+      END $$;
+    `);
+    console.log("✓ Đã đảm bảo giá trị mặc định cho các cột ID và updatedAt.");
+  } catch (err) {
+    console.warn("Lưu ý cấu hình cột:", err.message);
+  }
+
   const adminEmail = process.env.SEED_ADMIN_EMAIL || "admintrendy";
   const adminPassword = process.env.SEED_ADMIN_PASSWORD || "11111111";
   const adminPasswordHash = getAdminPasswordHash(adminPassword);

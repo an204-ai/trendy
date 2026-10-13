@@ -1,4 +1,4 @@
-import { randomBytes, createHash, createPublicKey, createVerify } from "node:crypto";
+import { randomBytes, randomUUID, createHash, createPublicKey, createVerify } from "node:crypto";
 import { Injectable, UnauthorizedException, ConflictException, BadRequestException, ForbiddenException, ServiceUnavailableException, NotFoundException } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { JwtService } from "@nestjs/jwt";
@@ -38,6 +38,7 @@ export class AuthService {
         const displayName = payload.name?.trim() || [payload.given_name, payload.family_name].filter(Boolean).join(" ") || email.split("@")[0];
         const customerCode = await this.nextCustomerCode();
         user = await users.save(users.create({
+          id: randomUUID(),
           customerCode,
           email,
           passwordHash: await hashPassword(randomBytes(48).toString("base64url")),
@@ -93,6 +94,7 @@ export class AuthService {
     const repository = this.dataSource.getRepository(User);
     const customerCode = await this.nextCustomerCode();
     const user = await repository.save(repository.create({
+      id: randomUUID(),
       customerCode,
       email,
       passwordHash: await hashPassword(input.password),
@@ -110,6 +112,7 @@ export class AuthService {
     if (await users.findOneBy({ email })) throw new ConflictException("Email này đã tồn tại");
     const role = input.role === UserRole.ADMIN ? UserRole.ADMIN : UserRole.STAFF;
     const user = await users.save(users.create({
+      id: randomUUID(),
       email,
       passwordHash: await hashPassword(input.password),
       fullName: input.fullName.trim(),
@@ -271,6 +274,7 @@ export class AuthService {
       current.revokedAt = new Date();
       await sessions.save(current);
       const session = await sessions.save(sessions.create({
+        id: randomUUID(),
         userId: user.id,
         tokenHash: this.hashToken(nextRawToken),
         expiresAt,
@@ -293,6 +297,7 @@ export class AuthService {
   async issuePair(user: User, userAgent?: string): Promise<TokenPair> {
     const refreshToken = randomBytes(48).toString("base64url");
     const session = await this.dataSource.getRepository(RefreshSession).save({
+      id: randomUUID(),
       userId: user.id,
       tokenHash: this.hashToken(refreshToken),
       expiresAt: this.refreshExpiry(),
