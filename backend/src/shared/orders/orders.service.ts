@@ -1,10 +1,12 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException, Optional } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
-import { randomBytes } from "node:crypto";
 import { DataSource, IsNull, Repository } from "typeorm";
-import { CustomerOrder, OrderItem, OrderStatus, OrderStatusHistory, OrderTransaction, OutboxEvent, Product, ProductVariant, User, UserRole } from "../database/entities";
+import { CustomerOrder, OrderItem, OrderStatus, OrderStatusHistory, OrderTransaction, Product, ProductVariant, Promotion, User, UserRole } from "../database/entities";
 import { UserPrincipal } from "../auth/auth.types";
+import { OutboxPublisher } from "../messaging/outbox.publisher";
+import { OrderQueueService } from "../messaging/order-queue.service";
 import { CreateOrderDto, CreateStaffOrderDto, UpdateOrderDto } from "./orders.dto";
+import { executeOrderCreation, OrderCreationResult } from "./order-creation.processor";
 
 const transitions: Record<OrderStatus, OrderStatus[]> = {
   RECEIVED: ["PENDING_CONFIRMATION", "CANCELLED"],
@@ -18,81 +20,108 @@ const transitions: Record<OrderStatus, OrderStatus[]> = {
 
 @Injectable()
 export class OrdersService {
-  constructor(private readonly dataSource: DataSource, @InjectRepository(CustomerOrder) private readonly orders: Repository<CustomerOrder>) {}
+  private readonly logger = new Logger(OrdersService.name);
 
-  async create(customer: UserPrincipal, dto: CreateOrderDto, idempotencyKey?: string, actor: UserPrincipal = customer) {
+  constructor(
+    private readonly dataSource: DataSource,
+    @InjectRepository(CustomerOrder) private readonly orders: Repository<CustomerOrder>,
+    @InjectRepository(Promotion) private readonly promotions: Repository<Promotion>,
+    @Optional() private readonly outboxPublisher?: OutboxPublisher,
+    @Optional() private readonly orderQueue?: OrderQueueService,
+  ) {}
+
+  async checkPromotion(customerId: string, code: string, subtotal: number) {
+    if (!customerId) throw new BadRequestException("Vui lòng đăng nhập để sử dụng mã khuyến mãi");
+    if (!code || !code.trim()) throw new BadRequestException("Vui lòng nhập mã khuyến mãi");
+    const promotion = await this.promotions.createQueryBuilder("p")
+      .where('upper(p.code) = upper(:code)', { code: code.trim() })
+      .getOne();
+    if (!promotion || !promotion.active) throw new BadRequestException("Mã khuyến mãi không tồn tại hoặc đã ngừng áp dụng");
+
+    const alreadyUsed = await this.orders.createQueryBuilder("o")
+      .where("o.customerId = :customerId", { customerId })
+      .andWhere('upper(o.promotionCode) = upper(:code)', { code: code.trim() })
+      .andWhere("o.status != 'CANCELLED'")
+      .andWhere("o.deletedAt IS NULL")
+      .getOne();
+    if (alreadyUsed) {
+      throw new BadRequestException("Bạn đã sử dụng mã khuyến mãi này rồi");
+    }
+
+    const now = new Date();
+    if (new Date(promotion.startsAt) > now) throw new BadRequestException("Chương trình khuyến mãi chưa bắt đầu");
+    if (new Date(promotion.endsAt) < now) throw new BadRequestException("Mã khuyến mãi đã hết hạn sử dụng");
+
+    if (promotion.usageLimit !== null && promotion.usageCount >= promotion.usageLimit) {
+      throw new BadRequestException("Mã khuyến mãi đã hết lượt sử dụng");
+    }
+
+    if (subtotal < promotion.minimumOrder) {
+      throw new BadRequestException(`Đơn hàng tối thiểu phải từ ${promotion.minimumOrder.toLocaleString("vi-VN")} đ để áp dụng mã này`);
+    }
+
+    let discountAmount = 0;
+    if (promotion.discountType === "PERCENT") {
+      discountAmount = Math.round((subtotal * promotion.discountValue) / 100);
+      if (promotion.maximumDiscount && discountAmount > promotion.maximumDiscount) {
+        discountAmount = promotion.maximumDiscount;
+      }
+    } else {
+      discountAmount = promotion.discountValue;
+    }
+    discountAmount = Math.min(discountAmount, subtotal);
+
+    return {
+      id: promotion.id,
+      code: promotion.code,
+      name: promotion.name,
+      discountType: promotion.discountType,
+      discountValue: promotion.discountValue,
+      discountAmount,
+    };
+  }
+
+  async create(customer: UserPrincipal | null, dto: CreateOrderDto, idempotencyKey?: string, actor: UserPrincipal = customer!) {
     if (idempotencyKey?.length && idempotencyKey.length > 100) throw new BadRequestException("Idempotency-Key quá dài");
-    if (idempotencyKey) {
+    if (idempotencyKey && customer?.id) {
       const existing = await this.orders.findOne({ where: { customerId: customer.id, idempotencyKey }, relations: { items: true, history: true } });
       if (existing) return this.present(existing);
     }
-    const quantities = new Map<string, number>();
-    for (const item of dto.items) quantities.set(item.sku.trim(), (quantities.get(item.sku.trim()) || 0) + item.quantity);
-    if ([...quantities.values()].some((quantity) => quantity > 20)) throw new BadRequestException("Mỗi SKU tối đa 20 sản phẩm trong một đơn");
 
-    try {
-      const order = await this.dataSource.transaction(async (manager) => {
-        const productRepo = manager.getRepository(Product);
-        const variantRepo = manager.getRepository(ProductVariant);
-        const orderItems: Partial<OrderItem>[] = [];
-        const reservedVariants: ProductVariant[] = [];
-        let subtotal = 0;
+    let result: OrderCreationResult | null = null;
 
-        for (const [sku, quantity] of quantities) {
-          let variant = await variantRepo.createQueryBuilder("variant").setLock("pessimistic_write").where('variant."sku" = :sku AND variant."active" = true', { sku }).getOne();
-          let product: Product | null = null;
-          if (variant) product = await productRepo.findOneBy({ id: variant.productId, active: true });
-          else product = await productRepo.findOneBy({ sku, active: true });
-          if (!product) throw new BadRequestException(`Không tìm thấy sản phẩm đang bán với SKU ${sku}`);
-          if (variant?.stockOnHand !== null && variant && variant.stockOnHand < quantity) throw new ConflictException(`Sản phẩm ${product.name} hiện không đủ tồn kho`);
-          if (variant?.stockOnHand !== null && variant) {
-            variant.stockOnHand -= quantity;
-            reservedVariants.push(variant);
-          }
-          const unitPrice = variant?.price ?? product.price;
-          subtotal += unitPrice * quantity;
-          orderItems.push({ productId: product.id, variantId: variant?.id || null, sku, productCode: product.code, productName: product.name, variantName: variant?.name || null, unitPrice, quantity, lineTotal: unitPrice * quantity });
-        }
-        if (!orderItems.length) throw new BadRequestException("Đơn hàng chưa có sản phẩm hợp lệ");
-        if (reservedVariants.length) await variantRepo.save(reservedVariants);
-
-        const code = `TR${Date.now().toString(36).toUpperCase()}${randomBytes(3).toString("hex").toUpperCase()}`;
-        const orderRepo = manager.getRepository(CustomerOrder);
-        const savedOrder = await orderRepo.save(orderRepo.create({
-          orderCode: code,
-          customerId: customer.id,
-          idempotencyKey: idempotencyKey || null,
-          status: "RECEIVED",
-          paymentMethod: "COD",
-          paymentStatus: "UNPAID",
-          subtotal,
-          shippingFee: 0,
-          total: subtotal,
-          recipientName: dto.shipping.recipientName.trim(),
-          email: dto.shipping.email.trim().toLowerCase(),
-          phone: dto.shipping.phone.trim(),
-          addressLine: dto.shipping.addressLine.trim(),
-          ward: dto.shipping.ward?.trim() || null,
-          district: dto.shipping.district?.trim() || null,
-          province: dto.shipping.province.trim(),
-          country: "Việt Nam",
-          customerNote: dto.note?.trim() || null,
-        }));
-        const itemRepo = manager.getRepository(OrderItem);
-        await itemRepo.save(orderItems.map((item) => itemRepo.create({ ...item, orderId: savedOrder.id })));
-        await manager.getRepository(OrderStatusHistory).save({ orderId: savedOrder.id, fromStatus: null, toStatus: "RECEIVED", actorUserId: actor.id, note: actor.id === customer.id ? "Khách hàng đặt đơn COD" : `Nhân viên ${actor.fullName} tạo đơn COD` });
-        await manager.getRepository(OrderTransaction).save({ orderId: savedOrder.id, type: "COD_DUE", status: "PENDING", amount: savedOrder.total, note: "Đơn COD chờ thu", actorUserId: actor.id });
-        await manager.getRepository(OutboxEvent).save({ eventName: "order.created", aggregateId: savedOrder.id, payload: { orderId: savedOrder.id, orderCode: savedOrder.orderCode }, publishedAt: null });
-        return savedOrder;
-      });
-      return this.getOwned(customer.id, order.orderCode);
-    } catch (error) {
-      if (idempotencyKey && (error as { code?: string }).code === "23505") {
-        const existing = await this.orders.findOne({ where: { customerId: customer.id, idempotencyKey }, relations: { items: true, history: true } });
-        if (existing) return this.present(existing);
+    // 1. Gửi qua Message Queue (RabbitMQ) để xử lý tuần tự chống xung đột dữ liệu đồng thời
+    if (this.orderQueue?.isAvailable()) {
+      try {
+        result = await this.orderQueue.requestOrderCreation({
+          customer,
+          dto,
+          idempotencyKey,
+          actor,
+        });
+      } catch (err) {
+        this.logger.warn(`Lỗi gửi yêu cầu tạo đơn qua MQ, chuyển qua xử lý an toàn trực tiếp: ${(err as Error).message}`);
       }
-      throw error;
     }
+
+    // 2. Nếu MQ không khả dụng hoặc timeout, thực thi giao dịch trực tiếp với pessimistic write lock
+    if (!result) {
+      result = await executeOrderCreation(this.dataSource, customer, dto, idempotencyKey, actor);
+    }
+
+    // 3. Xử lý kết quả: NẾU THIẾU TỒN KHO -> Ném lỗi ra ngoài ngay, TUYỆT ĐỐI KHÔNG TẠO BẢN GHI ĐƠN TRONG DB
+    if (!result.success) {
+      if (result.statusCode === 409) {
+        throw new ConflictException(result.message);
+      }
+      throw new BadRequestException(result.message);
+    }
+
+    // 4. Trả về thông tin đơn hàng đã tạo thành công
+    if (!customer || actor.role !== UserRole.CUSTOMER) {
+      return this.getForStaff(result.orderCode!);
+    }
+    return this.getOwned(customer.id, result.orderCode!);
   }
 
   async listMine(customerId: string) {
@@ -121,9 +150,28 @@ export class OrdersService {
   }
 
   async createForStaff(actor: UserPrincipal, dto: CreateStaffOrderDto) {
-    const customer = await this.dataSource.getRepository(User).findOneBy({ id: dto.customerId, role: UserRole.CUSTOMER, active: true });
-    if (!customer) throw new NotFoundException("Không tìm thấy tài khoản khách hàng đang hoạt động");
-    const principal: UserPrincipal = { id: customer.id, email: customer.email, fullName: customer.fullName, phone: customer.phone, role: customer.role };
+    let principal: UserPrincipal | null = null;
+    if (dto.customerId) {
+      const customer = await this.dataSource.getRepository(User).findOneBy({ id: dto.customerId, role: UserRole.CUSTOMER, active: true });
+      if (customer) {
+        principal = { id: customer.id, email: customer.email, fullName: customer.fullName, phone: customer.phone, role: customer.role };
+      }
+    } else if (dto.shipping?.phone || dto.shipping?.email) {
+      const userRepo = this.dataSource.getRepository(User);
+      const query = userRepo.createQueryBuilder("u")
+        .where("u.role = :role AND u.active = true", { role: UserRole.CUSTOMER });
+      if (dto.shipping?.phone && dto.shipping?.email) {
+        query.andWhere("(u.phone = :phone OR lower(u.email) = lower(:email))", { phone: dto.shipping.phone.trim(), email: dto.shipping.email.trim() });
+      } else if (dto.shipping?.phone) {
+        query.andWhere("u.phone = :phone", { phone: dto.shipping.phone.trim() });
+      } else {
+        query.andWhere("lower(u.email) = lower(:email)", { email: dto.shipping.email.trim() });
+      }
+      const matched = await query.getOne();
+      if (matched) {
+        principal = { id: matched.id, email: matched.email, fullName: matched.fullName, phone: matched.phone, role: matched.role };
+      }
+    }
     const { customerId: _customerId, ...orderDto } = dto;
     return this.create(principal, orderDto, undefined, actor);
   }
@@ -225,14 +273,16 @@ export class OrdersService {
       if (!order) throw new NotFoundException("Không tìm thấy đơn hàng");
       if (order.deletedAt) throw new ConflictException("Đơn hàng đã được đưa vào thùng rác");
       if (!transitions[order.status].includes("CANCELLED")) throw new ConflictException("Đơn hàng đã giao cho vận chuyển nên không thể hủy tại đây");
-      const items = await manager.getRepository(OrderItem).findBy({ orderId: order.id });
-      const variantRepo = manager.getRepository(ProductVariant);
-      for (const item of items) {
-        if (!item.variantId) continue;
-        const variant = await variantRepo.createQueryBuilder("variant").setLock("pessimistic_write").where('"variant"."id" = :id', { id: item.variantId }).getOne();
-        if (variant?.stockOnHand !== null && variant) {
-          variant.stockOnHand += item.quantity;
-          await variantRepo.save(variant);
+      if (order.status !== "CANCELLED") {
+        const items = await manager.getRepository(OrderItem).findBy({ orderId: order.id });
+        const variantRepo = manager.getRepository(ProductVariant);
+        for (const item of items) {
+          if (!item.variantId) continue;
+          const variant = await variantRepo.createQueryBuilder("variant").setLock("pessimistic_write").where('"variant"."id" = :id', { id: item.variantId }).getOne();
+          if (variant?.stockOnHand !== null && variant) {
+            variant.stockOnHand += item.quantity;
+            await variantRepo.save(variant);
+          }
         }
       }
       const previous = order.status;
@@ -283,6 +333,8 @@ export class OrdersService {
       paymentStatus: order.paymentStatus,
       subtotal: order.subtotal,
       shippingFee: order.shippingFee,
+      discountAmount: order.discountAmount || 0,
+      promotionCode: order.promotionCode || null,
       total: order.total,
       shipping: { recipientName: order.recipientName, email: order.email, phone: order.phone, addressLine: order.addressLine, ward: order.ward, district: order.district, province: order.province, country: order.country },
       carrier: order.carrier,

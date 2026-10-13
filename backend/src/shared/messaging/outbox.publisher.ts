@@ -23,6 +23,10 @@ export class OutboxPublisher implements OnModuleInit, OnModuleDestroy {
     await this.connection?.close().catch(() => undefined);
   }
 
+  async publishImmediate() {
+    await this.publishPending();
+  }
+
   private async ensureChannel() {
     if (this.channel) return this.channel;
     const connection = await amqp.connect(this.config.get<string>("RABBITMQ_URL", "amqp://trendy:trendy-local-password@rabbitmq:5672"));

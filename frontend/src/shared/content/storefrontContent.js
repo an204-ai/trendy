@@ -1,16 +1,22 @@
-const CDN = "https://gm-prd-resource.gentlemonster.com";
-
-const collectionStoryImage = (u) => `${CDN}/assets/stories/2026-collection/${u}`;
-const margielaStoryImage = (u) => `https://web-resource.gentlemonster.com/assets/stories/margiela/img/collection/${u}?ver=2.2`;
-
 export const stories = [
   {
     slug: "chat-lieu-sac-mau",
     title: "Chất liệu và sắc màu",
     layout: "materials",
-    cardImage: collectionStoryImage("img_campaign_01-pc.jpg"),
-    hero: collectionStoryImage("img_campaign_01-pc.jpg"),
-    gallery: [1, 2, 3, 4, 5].map((u) => collectionStoryImage(`img_campaign_${String(u).padStart(2, "0")}-pc.jpg`)),
+    cardImage: "/images/stories/materials-hero.jpg",
+    hero: "/images/stories/materials-hero.jpg",
+    gallery: [
+      "/images/stories/materials-hero.jpg",
+      "/images/stories/materials-detail-1.jpg",
+      "/images/stories/materials-detail-2.jpg",
+      "/images/stories/materials-detail-3.jpg",
+    ],
+    relatedProducts: [
+      "gentle-monster-her",
+      "gentle-monster-lang",
+      "gentle-monster-tambu",
+      "gentle-monster-rococo",
+    ],
     intro: "Kim loại bắt sáng tinh tế, acetate giữ lại chiều sâu của màu sắc. Chất liệu là điểm chạm đầu tiên tạo nên cảm xúc của một thiết kế.",
     sections: [
       { title: "Ánh sáng trên từng bề mặt", body: "Bề mặt kim loại phản chiếu ánh sáng thành những điểm nhấn thanh thoát. Gọng acetate lại tạo cảm giác đậm nét và giàu chiều sâu.", imageIndex: 1 },
@@ -23,9 +29,20 @@ export const stories = [
     slug: "nghe-thuat-che-tac",
     title: "Nghệ thuật chế tác",
     layout: "atelier",
-    cardImage: margielaStoryImage("intro_img_pc.jpg"),
-    hero: margielaStoryImage("intro_img_pc.jpg"),
-    gallery: [1, 2, 3].map((u) => margielaStoryImage(`campaign_img_pc_${u}.jpg`)),
+    cardImage: "/images/stories/atelier-hero.jpg",
+    hero: "/images/stories/atelier-hero.jpg",
+    gallery: [
+      "/images/stories/atelier-hero.jpg",
+      "/images/stories/atelier-detail-1.jpg",
+      "/images/stories/atelier-detail-2.jpg",
+      "/images/stories/atelier-detail-3.jpg",
+    ],
+    relatedProducts: [
+      "gentle-monster-milan",
+      "gentle-monster-south-side-n",
+      "gentle-monster-kubo",
+      "gentle-monster-alio-x",
+    ],
     intro: "Một thiết kế chỉ thật sự trọn vẹn khi đường nét, chất liệu và cảm giác khi đeo cùng hòa làm một.",
     sections: [
       { title: "Đường nét được cân nhắc", body: "Từ cầu kính đến càng kính, mỗi chi tiết góp phần tạo nên vẻ cân đối và cá tính. Không có đường nét nào đứng riêng lẻ.", imageIndex: 1 },
@@ -38,12 +55,12 @@ export const stories = [
 
 export const homeHero = {
   title: "THIẾT KẾ MỚI",
-  image: "https://images.unsplash.com/photo-1591076482161-42ce6da69f67?auto=format&fit=crop&w=1200&q=80",
+  image: "https://res.cloudinary.com/loovmj5w/video/upload/v1791862821/video_ngang_cho_page.jpg",
   slides: [
-    { video: "https://gm-prd-resource.gentlemonster.com/main/banner/844160776311460281/9b68ad1a-6e18-41e6-b18c-518ea111cc88/main_global_pc_1920*990.mp4", poster: "https://gm-prd-resource.gentlemonster.com/main/banner/844160776311460281/7096e70f-8026-4a87-b7c4-1207c0ce1375/main_global_pc_1920_990.jpg" },
-    { video: "https://gm-prd-resource.gentlemonster.com/main/banner/798372671433820827/6fc4e780-c8ce-48bd-a8dd-3abff6ab7f8d/main_pc_1920*990.mp4", poster: "https://gm-prd-resource.gentlemonster.com/main/banner/798372671433820827/dce2ee4d-8824-4bd1-99f8-85e884166170/main_pc_1920*990.jpg" },
-    { video: "https://gm-prd-resource.gentlemonster.com/main/banner/770800970997325499/acc3f823-6a91-4897-b629-3891b5632fe9/main_0_pc_1920*990.mp4", poster: "https://gm-prd-resource.gentlemonster.com/main/banner/770800970997325499/97311d97-035a-4002-95de-ba9eab0f8511/main_0_pc_3840_1980.jpg" },
-    { video: "https://gm-prd-resource.gentlemonster.com/main/banner/745797614844190277/dc673826-17a9-4253-b4e5-d0f681db7017/main_0_pc_1920*990.mp4", poster: "https://gm-prd-resource.gentlemonster.com/main/banner/745797614844190277/849b4361-e36c-486c-a575-dc78871431f3/main_0_pc_3840*1980.jpg" },
+    {
+      video: "https://res.cloudinary.com/loovmj5w/video/upload/v1791862821/video_ngang_cho_page.mp4",
+      poster: "https://res.cloudinary.com/loovmj5w/video/upload/v1791862821/video_ngang_cho_page.jpg",
+    },
   ],
   shopLabel: "MUA NGAY",
   storyLabel: "CÂU CHUYỆN",
@@ -68,7 +85,47 @@ export const homeSections = [
 ];
 
 export const stores = [
-  { city: "Hồ Chí Minh", country: "Việt Nam", name: "Trendy Nguyễn Gia Trí", address: "37 Nguyễn Gia Trí, Phường Thạnh Mỹ Tây, Hồ Chí Minh", hours: "Vui lòng liên hệ để biết giờ hoạt động", image: "/images/storefront-trendy.jpg" },
+  {
+    city: "Hồ Chí Minh",
+    country: "Việt Nam",
+    name: "Mắt Kính Trendy",
+    address: "37 Nguyễn Gia Trí, Phường 25, Bình Thạnh, Hồ Chí Minh",
+    hours: "08:30 - 22:00 (Thứ 2 - Thứ Bảy)",
+    phone: "0392 615 888",
+    mapUrl: "https://maps.app.goo.gl/3Vn1QfSNJgvDttUZA",
+    embedMapUrl: "https://maps.google.com/maps?q=M%E1%BA%AFt+K%C3%ADnh+Trendy,+37+Nguy%E1%BB%85n+Gia+Tr%C3%AD,+B%C3%ACnh+Th%E1%BA%A1nh,+H%E1%BB%93+Ch%C3%AD+Minh&t=&z=17&ie=UTF8&iwloc=&output=embed",
+    image: "/images/storefront-trendy.jpg",
+    gallery: [
+      {
+        url: "/images/storefront-trendy.jpg",
+        title: "Cửa hàng Mắt Kính Trendy - 37 Nguyễn Gia Trí",
+      },
+      {
+        url: "/images/store/store-interior-1.jpg",
+        title: "Khu vực trưng bày và tư vấn",
+      },
+      {
+        url: "/images/store/store-interior-2.jpg",
+        title: "Không gian trưng bày kính cận và kính thời trang",
+      },
+      {
+        url: "/images/store/store-interior-3.jpg",
+        title: "Khu vực thử kính và đo mắt chuyên sâu",
+      },
+      {
+        url: "/images/store/store-showcase.jpg",
+        title: "Tủ kính trưng bày các bộ sưu tập Gentle Monster",
+      },
+      {
+        url: "/images/store/store-front.jpg",
+        title: "Mặt tiền cửa hàng Mắt Kính Trendy",
+      },
+      {
+        url: "https://lh3.googleusercontent.com/grass-cs/AABkmLcB_nSD3N5nmRFTuQU-taqhmrS11lyJBAvubGgCJkFmXWY3BTY0bxtyoompBxlbjNBDIZ9iEM9TRi_kjhonPQyWQgXOVJazMYoZ6fvEdkngWr1nVW87eijggCPQPx__FfHf_SPvSfvmRtVm=w1600",
+        title: "Khu vực trải nghiệm sản phẩm",
+      },
+    ],
+  },
 ];
 
 export const storefrontContent = {
@@ -81,6 +138,7 @@ export const storefrontContent = {
     cart: "TÚI HÀNG",
     checkout: "THANH TOÁN",
     legal: "THÔNG TIN PHÁP LÝ",
+    privacy: "CHÍNH SÁCH BẢO MẬT",
     complete: "ĐẶT HÀNG THÀNH CÔNG",
     product: "SẢN PHẨM",
   },
@@ -148,23 +206,37 @@ export const storefrontContent = {
     allProductsLabel: "Xem tất cả",
   },
   footer: {
-    about: "Theo dõi các kênh chính thức để cập nhật mẫu kính và câu chuyện mới.",
+    about: "Theo dõi các kênh chính thức của Mắt Kính Trendy để cập nhật mẫu kính và ưu đãi mới nhất.",
     socialLinks: [
-      { label: "Instagram", href: "" },
-      { label: "TikTok", href: "" },
-      { label: "YouTube", href: "" },
+      {
+        label: "Shopee",
+        href: "https://shopee.vn/matkinhtrendy",
+      },
+      {
+        label: "TikTok",
+        href: "https://www.tiktok.com/@matkinhtrendy_official?_r=1&_t=ZS-9AU1Rt8KfCy",
+      },
+      {
+        label: "Instagram",
+        href: "https://www.instagram.com/mktrendy.official?utm_source=ig_web_button_share_sheet&xtok=ZDNlZDc0MzIxNw==",
+      },
     ],
-    customerCare: "Thông tin",
+    customerCare: "Thông tin & Mua sắm",
     links: [
+      { label: "Shopee", href: "https://shopee.vn/matkinhtrendy", external: true },
+      { label: "TikTok", href: "https://www.tiktok.com/@matkinhtrendy_official?_r=1&_t=ZS-9AU1Rt8KfCy", external: true },
+      { label: "Instagram", href: "https://www.instagram.com/mktrendy.official?utm_source=ig_web_button_share_sheet&xtok=ZDNlZDc0MzIxNw==", external: true },
       { label: "Tìm cửa hàng", href: "/stores" },
       { label: "Thông tin pháp lý", href: "/legal" },
+      { label: "Chính sách bảo mật", href: "/privacy" },
     ],
     newsletter: "Bản tin",
     newsletterDescription: "Nhận tin về mẫu kính và câu chuyện mới.",
     locale: "VIỆT NAM · TIẾNG VIỆT · VNĐ",
     copyright: "© 2026 TRENDY",
     legalLinks: [
-      { label: "Chính sách bảo mật", href: "/legal" },
+      { label: "Chính sách bảo mật", href: "/privacy" },
+      { label: "Thông tin pháp lý", href: "/legal" },
       { label: "Điều khoản sử dụng", href: "/legal" },
     ],
   },

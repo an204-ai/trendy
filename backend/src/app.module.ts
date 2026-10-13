@@ -16,7 +16,16 @@ import { ChatModule } from "./shared/chat/chat.module";
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
-    ThrottlerModule.forRoot([{ ttl: 60_000, limit: 120 }]),
+    ThrottlerModule.forRootAsync({
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => [
+        {
+          name: "default",
+          ttl: Number(config.get("THROTTLE_TTL")) || 60_000,
+          limit: Number(config.get("THROTTLE_LIMIT")) || 120,
+        },
+      ],
+    }),
     TypeOrmModule.forRootAsync({
       inject: [ConfigService],
       useFactory: (config: ConfigService) => ({

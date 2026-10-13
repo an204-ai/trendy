@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, UseGuards } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Param, Patch, Post, UseGuards } from "@nestjs/common";
 import { AccessTokenGuard, RolesGuard } from "../auth/auth.guards";
 import { CurrentUser, Roles } from "../auth/auth.decorators";
 import { UserPrincipal } from "../auth/auth.types";
@@ -24,4 +24,5 @@ export class StaffChatController {
   @Get("conversations/:id/messages") messages(@Param("id") id: string) { return this.chat.getStaffMessages(id); }
   @Post("conversations/:id/messages") send(@Param("id") id: string, @CurrentUser() user: UserPrincipal, @Body() body: SendChatMessageDto) { return this.chat.sendStaffMessage(id, user, body.body); }
   @Patch("conversations/:id") update(@Param("id") id: string, @Body() body: UpdateConversationDto) { return this.chat.updateStatus(id, body.status); }
+  @Delete("conversations/:id") remove(@Param("id") id: string) { return this.chat.deleteConversation(id); }
 }

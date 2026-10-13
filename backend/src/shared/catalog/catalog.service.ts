@@ -1,6 +1,6 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
-import { DataSource, In, Repository } from "typeorm";
+import { DataSource, ILike, In, Repository } from "typeorm";
 import { Product, ProductCategory, ProductCategoryLink, ProductImage, ProductVariant } from "../database/entities";
 import { CreateCategoryDto, CreateProductDto, ProductVariantInputDto, UpdateCategoryDto, UpdateProductDto } from "./catalog.dto";
 
@@ -39,13 +39,13 @@ export class CatalogService {
 
   async listAdminProducts() {
     const rows = await this.products.find({ relations: productRelations, order: { updatedAt: "DESC" } });
-    return rows.map((product) => this.present(product, true));
+    return rows.map((product) => this.present(product, false));
   }
 
   async getAdminProduct(id: string) {
     const product = await this.products.findOne({ where: { id }, relations: productRelations });
     if (!product) throw new NotFoundException("Không tìm thấy sản phẩm");
-    return this.present(product, true);
+    return this.present(product, false);
   }
 
   async createProduct(dto: CreateProductDto) {
@@ -188,8 +188,23 @@ export class CatalogService {
     for (const key of ["code", "slug", "sku"] as const) {
       const value = dto[key]?.trim();
       if (!value) continue;
-      const existing = await repo.findOneBy({ [key]: key === "slug" ? slugify(value) : value } as any);
-      if (existing && existing.id !== currentId) throw new ConflictException(`Mã sản phẩm ${key} đã được sử dụng`);
+      const existing = await repo.findOne({
+        where: { [key]: key === "slug" ? slugify(value) : (key === "sku" ? ILike(value) : value) } as any,
+      });
+      if (existing && existing.id !== currentId) {
+        if (key === "slug") throw new ConflictException("Đường dẫn tĩnh đã được sử dụng");
+        if (key === "sku") throw new ConflictException("Mã SKU đã được sử dụng");
+        throw new ConflictException(`Mã sản phẩm ${key} đã được sử dụng`);
+      }
+      if (key === "sku") {
+        const variantRepo = repo.manager.getRepository(ProductVariant);
+        const existingVariant = await variantRepo.findOne({
+          where: { sku: ILike(value) },
+        });
+        if (existingVariant && existingVariant.productId !== currentId) {
+          throw new ConflictException("Mã SKU đã được sử dụng");
+        }
+      }
     }
   }
 

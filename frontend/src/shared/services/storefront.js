@@ -68,7 +68,7 @@ export const getProductMenuCategoryLabels = (product) => {
 
 export const getPrimaryProductMenuCategory = (product) => {
   const categoryIds = new Set(Array.isArray(product?.category) ? product.category : product?.category ? [product.category] : []);
-  return catalogMenuCategories.find((group) => categoryIds.has(group.id))?.title || "";
+  return catalogMenuCategories.find((group) => categoryIds.has(group.id) || group.children?.some((child) => categoryIds.has(child.id)))?.title || "";
 };
 
 export const getStorefrontContent = () => storefrontContent;
@@ -139,7 +139,7 @@ export async function refreshCatalog() {
 // Trigger initial catalog load
 refreshCatalog().catch(() => {});
 
-export const formatPrice = (amount) => `${Number(amount).toLocaleString("vi-VN")} ₫`;
+export const formatPrice = (amount) => `${Number(amount).toLocaleString("vi-VN")}\u00A0₫`;
 
 export function getVariants(product) {
   return Array.isArray(product?.variants) ? product.variants : [];

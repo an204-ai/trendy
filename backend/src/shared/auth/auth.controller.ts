@@ -1,10 +1,10 @@
-import { Body, Controller, Get, Patch, Post, Req, Res, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, Patch, Post, Req, Res, UnauthorizedException, UseGuards } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { Throttle } from "@nestjs/throttler";
 import type { Request, Response } from "express";
 import { CurrentUser } from "./auth.decorators";
 import { AccessTokenGuard } from "./auth.guards";
-import { GoogleLoginDto, LoginDto, ProfileUpdateDto, RegisterDto } from "./auth.dto";
+import { ChangePasswordDto, GoogleLoginDto, LoginDto, ProfileUpdateDto, RegisterDto } from "./auth.dto";
 import { AuthService } from "./auth.service";
 import { UserPrincipal } from "./auth.types";
 
@@ -16,7 +16,7 @@ export class AuthController {
   @Throttle({ default: { limit: 8, ttl: 60_000 } })
   async register(@Body() body: RegisterDto, @Req() request: Request, @Res({ passthrough: true }) response: Response) {
     const pair = await this.auth.register(body, this.userAgent(request));
-    this.setRefreshCookie(response, pair.refreshToken);
+    this.setRefreshCookie(response, pair.refreshToken, "customerRefreshToken");
     return { accessToken: pair.accessToken, user: pair.user };
   }
 
@@ -24,7 +24,7 @@ export class AuthController {
   @Throttle({ default: { limit: 8, ttl: 60_000 } })
   async login(@Body() body: LoginDto, @Req() request: Request, @Res({ passthrough: true }) response: Response) {
     const pair = await this.auth.login(body.email, body.password, this.userAgent(request));
-    this.setRefreshCookie(response, pair.refreshToken);
+    this.setRefreshCookie(response, pair.refreshToken, "customerRefreshToken");
     return { accessToken: pair.accessToken, user: pair.user };
   }
 
@@ -32,7 +32,7 @@ export class AuthController {
   @Throttle({ default: { limit: 8, ttl: 60_000 } })
   async loginStaff(@Body() body: LoginDto, @Req() request: Request, @Res({ passthrough: true }) response: Response) {
     const pair = await this.auth.loginStaff(body.email, body.password, this.userAgent(request));
-    this.setRefreshCookie(response, pair.refreshToken);
+    this.setRefreshCookie(response, pair.refreshToken, "staffRefreshToken");
     return { accessToken: pair.accessToken, user: pair.user };
   }
 
@@ -40,21 +40,43 @@ export class AuthController {
   @Throttle({ default: { limit: 8, ttl: 60_000 } })
   async googleLogin(@Body() body: GoogleLoginDto, @Req() request: Request, @Res({ passthrough: true }) response: Response) {
     const pair = await this.auth.googleLogin(body.credential, body.nonce, this.userAgent(request));
-    this.setRefreshCookie(response, pair.refreshToken);
+    this.setRefreshCookie(response, pair.refreshToken, "customerRefreshToken");
     return { accessToken: pair.accessToken, user: pair.user };
   }
 
   @Post("refresh")
   async refresh(@Req() request: Request, @Res({ passthrough: true }) response: Response) {
-    const pair = await this.auth.refresh(this.readCookie(request, "refreshToken"), this.userAgent(request));
-    this.setRefreshCookie(response, pair.refreshToken);
+    const token = this.readCookie(request, "customerRefreshToken") || this.readCookie(request, "refreshToken");
+    const pair = await this.auth.refresh(token, this.userAgent(request));
+    this.setRefreshCookie(response, pair.refreshToken, "customerRefreshToken");
+    return { accessToken: pair.accessToken, user: pair.user };
+  }
+
+  @Post("staff/refresh")
+  async refreshStaff(@Req() request: Request, @Res({ passthrough: true }) response: Response) {
+    const token = this.readCookie(request, "staffRefreshToken");
+    const pair = await this.auth.refresh(token, this.userAgent(request));
+    if (!["STAFF", "ADMIN"].includes(pair.user.role)) {
+      throw new UnauthorizedException("Tài khoản không thuộc quyền nội bộ");
+    }
+    this.setRefreshCookie(response, pair.refreshToken, "staffRefreshToken");
     return { accessToken: pair.accessToken, user: pair.user };
   }
 
   @Post("logout")
   async logout(@Req() request: Request, @Res({ passthrough: true }) response: Response) {
-    await this.auth.logout(this.readCookie(request, "refreshToken"));
+    const token = this.readCookie(request, "customerRefreshToken") || this.readCookie(request, "refreshToken");
+    await this.auth.logout(token);
+    response.clearCookie("customerRefreshToken", { httpOnly: true, sameSite: "lax", secure: this.secureCookie(), path: "/api/v1/auth" });
     response.clearCookie("refreshToken", { httpOnly: true, sameSite: "lax", secure: this.secureCookie(), path: "/api/v1/auth" });
+    return { ok: true };
+  }
+
+  @Post("staff/logout")
+  async logoutStaff(@Req() request: Request, @Res({ passthrough: true }) response: Response) {
+    const token = this.readCookie(request, "staffRefreshToken");
+    await this.auth.logout(token);
+    response.clearCookie("staffRefreshToken", { httpOnly: true, sameSite: "lax", secure: this.secureCookie(), path: "/api/v1/auth" });
     return { ok: true };
   }
 
@@ -68,9 +90,16 @@ export class AuthController {
     return { user: await this.auth.updateProfile(user.id, body) };
   }
 
-  private setRefreshCookie(response: Response, value: string) {
+  @Post("change-password")
+  @UseGuards(AccessTokenGuard)
+  async changePassword(@CurrentUser() user: UserPrincipal, @Body() body: ChangePasswordDto) {
+    await this.auth.changePassword(user.id, body.currentPassword, body.newPassword);
+    return { ok: true, message: "Đổi mật khẩu thành công" };
+  }
+
+  private setRefreshCookie(response: Response, value: string, name = "refreshToken") {
     const days = Math.max(1, Number(this.config.get("REFRESH_TOKEN_DAYS", 30)) || 30);
-    response.cookie("refreshToken", value, {
+    response.cookie(name, value, {
       httpOnly: true,
       secure: this.secureCookie(),
       sameSite: "lax",

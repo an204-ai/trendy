@@ -46,6 +46,8 @@ services:
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       SEED_ADMIN_EMAIL: ${SEED_ADMIN_EMAIL:-admin@trendy.local}
       SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:-local-only-change-this-password}
+      THROTTLE_TTL: ${THROTTLE_TTL:-60000}
+      THROTTLE_LIMIT: ${THROTTLE_LIMIT:-120}
     ports:
       - "127.0.0.1:${API_PORT:-3000}:3000"
     depends_on:

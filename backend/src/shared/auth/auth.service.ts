@@ -1,5 +1,5 @@
 import { randomBytes, createHash, createPublicKey, createVerify } from "node:crypto";
-import { Injectable, UnauthorizedException, ConflictException, BadRequestException, ForbiddenException, ServiceUnavailableException } from "@nestjs/common";
+import { Injectable, UnauthorizedException, ConflictException, BadRequestException, ForbiddenException, ServiceUnavailableException, NotFoundException } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { JwtService } from "@nestjs/jwt";
 import { DataSource, IsNull } from "typeorm";
@@ -36,7 +36,9 @@ export class AuthService {
         user = await users.save(user);
       } else {
         const displayName = payload.name?.trim() || [payload.given_name, payload.family_name].filter(Boolean).join(" ") || email.split("@")[0];
+        const customerCode = await this.nextCustomerCode();
         user = await users.save(users.create({
+          customerCode,
           email,
           passwordHash: await hashPassword(randomBytes(48).toString("base64url")),
           googleSubject: payload.sub,
@@ -65,11 +67,33 @@ export class AuthService {
     return this.toPrincipal(await users.save(user));
   }
 
+  async changePassword(userId: string, currentPassword: string, newPassword: string): Promise<void> {
+    const users = this.dataSource.getRepository(User);
+    const user = await users.findOneBy({ id: userId, active: true });
+    if (!user) throw new UnauthorizedException("Tài khoản không còn hoạt động");
+    if (user.googleSubject && !user.passwordHash) {
+      throw new BadRequestException("Tài khoản đăng nhập bằng Google không sử dụng tính năng đổi mật khẩu");
+    }
+    if (!(await verifyPassword(currentPassword, user.passwordHash))) {
+      throw new BadRequestException("Mật khẩu hiện tại chưa chính xác");
+    }
+    const cleanPassword = newPassword.trim();
+    if (cleanPassword.length < 8) {
+      throw new BadRequestException("Mật khẩu mới phải có ít nhất 8 ký tự");
+    }
+    if (currentPassword === cleanPassword) {
+      throw new BadRequestException("Mật khẩu mới không được trùng với mật khẩu hiện tại");
+    }
+    user.passwordHash = await hashPassword(cleanPassword);
+    await users.save(user);
+  }
+
   async register(input: { email: string; password: string; fullName: string; phone?: string }, userAgent?: string): Promise<TokenPair> {
     const email = this.normalizeEmail(input.email);
     const repository = this.dataSource.getRepository(User);
-    if (await repository.findOneBy({ email })) throw new ConflictException("Email này đã được đăng ký");
+    const customerCode = await this.nextCustomerCode();
     const user = await repository.save(repository.create({
+      customerCode,
       email,
       passwordHash: await hashPassword(input.password),
       fullName: input.fullName.trim(),
@@ -80,19 +104,122 @@ export class AuthService {
     return this.issuePair(user, userAgent);
   }
 
-  async createStaff(input: { email: string; password: string; fullName: string; phone?: string }): Promise<UserPrincipal> {
+  async createStaff(input: { email: string; password: string; fullName: string; phone?: string; role?: UserRole }): Promise<UserPrincipal> {
     const email = this.normalizeEmail(input.email);
     const users = this.dataSource.getRepository(User);
     if (await users.findOneBy({ email })) throw new ConflictException("Email này đã tồn tại");
+    const role = input.role === UserRole.ADMIN ? UserRole.ADMIN : UserRole.STAFF;
     const user = await users.save(users.create({
       email,
       passwordHash: await hashPassword(input.password),
       fullName: input.fullName.trim(),
       phone: input.phone?.trim() || null,
-      role: UserRole.STAFF,
+      role,
       active: true,
     }));
     return this.toPrincipal(user);
+  }
+
+  async listStaff(): Promise<Array<{ id: string; email: string; fullName: string; phone: string | null; role: UserRole; active: boolean; createdAt: Date; updatedAt: Date }>> {
+    const users = await this.dataSource.getRepository(User).find({
+      where: [
+        { role: UserRole.STAFF },
+        { role: UserRole.ADMIN },
+      ],
+      order: { createdAt: "DESC" },
+    });
+    return users.map((u) => ({
+      id: u.id,
+      email: u.email,
+      fullName: u.fullName,
+      phone: u.phone,
+      role: u.role,
+      active: u.active,
+      createdAt: u.createdAt,
+      updatedAt: u.updatedAt,
+    }));
+  }
+
+  async updateStaff(
+    id: string,
+    input: { email?: string; fullName?: string; phone?: string; password?: string; active?: boolean; role?: UserRole },
+    actorId?: string,
+  ) {
+    const users = this.dataSource.getRepository(User);
+    const user = await users.findOneBy({ id });
+    if (!user) throw new NotFoundException("Không tìm thấy người dùng");
+
+    if (input.email) {
+      const email = this.normalizeEmail(input.email);
+      if (email !== user.email) {
+        const existing = await users.findOneBy({ email });
+        if (existing && existing.id !== user.id) {
+          throw new ConflictException("Email này đã được sử dụng");
+        }
+        user.email = email;
+      }
+    }
+
+    if (input.fullName !== undefined) {
+      const fullName = input.fullName.trim();
+      if (fullName.length < 2) throw new BadRequestException("Họ tên cần có ít nhất 2 ký tự");
+      user.fullName = fullName;
+    }
+
+    if (input.phone !== undefined) {
+      user.phone = typeof input.phone === "string" ? input.phone.trim() || null : null;
+    }
+
+    if (input.password && input.password.trim().length > 0) {
+      const password = input.password.trim();
+      if (password.length < 8) throw new BadRequestException("Mật khẩu tối thiểu 8 ký tự");
+      user.passwordHash = await hashPassword(password);
+    }
+
+    if (input.role !== undefined && (input.role === UserRole.STAFF || input.role === UserRole.ADMIN)) {
+      if (user.id === actorId && input.role !== UserRole.ADMIN) {
+        throw new BadRequestException("Bạn không thể tự hạ quyền quản trị của chính mình");
+      }
+      user.role = input.role;
+    }
+
+    if (input.active !== undefined) {
+      if (user.id === actorId && !input.active) {
+        throw new BadRequestException("Bạn không thể tự khóa tài khoản của chính mình");
+      }
+      user.active = Boolean(input.active);
+    }
+
+    const saved = await users.save(user);
+    return {
+      id: saved.id,
+      email: saved.email,
+      fullName: saved.fullName,
+      phone: saved.phone,
+      role: saved.role,
+      active: saved.active,
+      createdAt: saved.createdAt,
+      updatedAt: saved.updatedAt,
+    };
+  }
+
+  async deleteStaff(id: string, actorId?: string) {
+    const users = this.dataSource.getRepository(User);
+    const user = await users.findOneBy({ id });
+    if (!user) throw new NotFoundException("Không tìm thấy người dùng");
+
+    if (user.id === actorId) {
+      throw new BadRequestException("Bạn không thể tự xóa tài khoản của chính mình");
+    }
+
+    try {
+      await users.remove(user);
+      return { success: true, message: "Đã xóa tài khoản thành công" };
+    } catch {
+      user.active = false;
+      await users.save(user);
+      return { success: true, deactivated: true, message: "Tài khoản có dữ liệu liên kết nên đã được khóa hoạt động" };
+    }
   }
 
   async login(emailInput: string, password: string, userAgent?: string): Promise<TokenPair> {
@@ -246,7 +373,37 @@ export class AuthService {
     const days = Math.max(1, Number(this.config.get("REFRESH_TOKEN_DAYS", 30)) || 30);
     return new Date(Date.now() + days * 24 * 60 * 60 * 1000);
   }
+  private async nextCustomerCode(): Promise<string> {
+    const repository = this.dataSource.getRepository(User);
+    const lastCustomer = await repository
+      .createQueryBuilder("user")
+      .where("user.customerCode IS NOT NULL")
+      .andWhere("user.customerCode LIKE :prefix", { prefix: "KH%" })
+      .orderBy("user.customerCode", "DESC")
+      .getOne();
+
+    if (!lastCustomer?.customerCode) {
+      return "KH0001";
+    }
+
+    const numStr = lastCustomer.customerCode.replace(/^KH/, "");
+    const num = parseInt(numStr, 10);
+    if (isNaN(num)) {
+      return `KH${String(Date.now()).slice(-4)}`;
+    }
+    const nextNum = num + 1;
+    return `KH${String(nextNum).padStart(4, "0")}`;
+  }
+
   private toPrincipal(user: User): UserPrincipal {
-    return { id: user.id, email: user.email, fullName: user.fullName, phone: user.phone, role: user.role };
+    return {
+      id: user.id,
+      customerCode: user.customerCode,
+      email: user.email,
+      fullName: user.fullName,
+      phone: user.phone,
+      role: user.role,
+      isGoogle: Boolean(user.googleSubject),
+    };
   }
 }

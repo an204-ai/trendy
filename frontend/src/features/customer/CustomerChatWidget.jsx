@@ -54,8 +54,18 @@ export default function CustomerChatWidget({ user }) {
         {messages.length ? messages.map((message) => <article key={message.id} className={message.senderRole === "CUSTOMER" ? "from-customer" : "from-staff"}><p>{message.body}</p><time>{new Date(message.createdAt).toLocaleString("vi-VN", { dateStyle: "short", timeStyle: "short" })}</time></article>) : <p className="customer-chat-empty">Gửi tin nhắn để bắt đầu trò chuyện với nhân viên.</p>}
       </div>
       {error && <p className="customer-chat-error" role="alert">{error}</p>}
-      <form onSubmit={send}><textarea value={text} onChange={(event) => setText(event.target.value)} maxLength={4000} placeholder="Nhập tin nhắn" aria-label="Tin nhắn" /><button className="staff-primary-action" disabled={busy || !text.trim()}>{busy ? "ĐANG GỬI…" : "GỬI"}</button></form>
+      <form onSubmit={send}><input type="text" value={text} onChange={(event) => setText(event.target.value)} maxLength={4000} placeholder="Nhập tin nhắn" aria-label="Tin nhắn" /><button className="staff-primary-action" disabled={busy || !text.trim()}>{busy ? "ĐANG GỬI…" : "GỬI"}</button></form>
     </section>}
-    <button className="customer-chat-launch" type="button" onClick={() => setOpen((value) => !value)} aria-expanded={open}>{open ? "Đóng hỗ trợ" : "Trò chuyện"}</button>
+    <button className="customer-chat-launch" type="button" onClick={() => setOpen((value) => !value)} aria-expanded={open} aria-label={open ? "Đóng hỗ trợ" : "Trò chuyện hỗ trợ"} title={open ? "Đóng hỗ trợ" : "Trò chuyện hỗ trợ"}>
+      {open ? (
+        <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <path d="m6 6 12 12M18 6 6 18" />
+        </svg>
+      ) : (
+        <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
+        </svg>
+      )}
+    </button>
   </div>;
 }

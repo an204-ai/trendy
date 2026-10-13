@@ -21,8 +21,37 @@ export default function StorePage({ category, subCategory, onAdd, onWishlist, wi
   const filtered = useMemo(() => {
     let list = [...getProducts()];
     const activeCategory = getProductMenuCategory(subCategory);
-    if (categoryId !== "All") list = list.filter((product) => product.category?.includes(categoryId));
-    if (activeCategory) list = list.filter((product) => product.category?.includes(activeCategory.id));
+
+    if (categoryId !== "All") {
+      const parentGroup = productCategories.find((g) => g.id === categoryId);
+      const allowedIds = parentGroup
+        ? new Set([parentGroup.id, ...(parentGroup.children || []).map((c) => c.id)])
+        : new Set([categoryId]);
+      list = list.filter((product) => {
+        const prodCats = Array.isArray(product.category)
+          ? product.category
+          : product.category
+          ? [product.category]
+          : [];
+        return prodCats.some((catId) => allowedIds.has(catId));
+      });
+    }
+
+    if (activeCategory) {
+      const allowedIds = new Set([
+        activeCategory.id,
+        ...(activeCategory.children || []).map((c) => c.id),
+      ]);
+      list = list.filter((product) => {
+        const prodCats = Array.isArray(product.category)
+          ? product.category
+          : product.category
+          ? [product.category]
+          : [];
+        return prodCats.some((catId) => allowedIds.has(catId));
+      });
+    }
+
     if (search.trim()) {
       const matchingProducts = new Set(searchProducts(search, 100).map((product) => product.slug));
       list = list.filter((product) => matchingProducts.has(product.slug));
@@ -31,11 +60,10 @@ export default function StorePage({ category, subCategory, onAdd, onWishlist, wi
     if (sort === "Giá cao đến thấp") list.sort((a, b) => b.price - a.price);
     if (sort === "Tên sản phẩm") list.sort((a, b) => a.name.localeCompare(b.name));
     return list;
-  }, [categoryId, subCategory, search, sort, catalogVersion]);
+  }, [categoryId, subCategory, search, sort, catalogVersion, productCategories]);
 
   const selectedMenuCategory = getProductMenuCategory(subCategory);
   const title = selectedMenuCategory?.label || selectedMenuCategory?.title || config.title[categoryId] || config.title.All;
-  const description = config.description[categoryId] || config.description.All;
   const resetFilters = () => { setCategoryId("All"); setSearch(""); setSort("Nổi bật"); window.history.pushState(null, "", "/store"); window.dispatchEvent(new PopStateEvent("popstate")); };
 
   return <main className="min-h-screen bg-white pb-20 pt-[112px] md:pt-[124px]">
@@ -69,11 +97,10 @@ export default function StorePage({ category, subCategory, onAdd, onWishlist, wi
 
     <header className="mx-auto mt-[62px] max-w-4xl px-5 text-center md:mt-[74px]">
       <h1 className="font-display text-[27px] font-semibold tracking-[-.035em] md:text-[30px]">{title}</h1>
-      <p className="mx-auto mt-4 max-w-3xl text-sm leading-6 text-black md:text-base">{description}</p>
     </header>
 
     <section className="store-results mx-5 mt-[clamp(48px,5vw,72px)] md:mx-[4.2vw]">
-      <div className="mb-4 flex items-center justify-between border-b border-black/10 pb-3 text-[10px] uppercase tracking-[.08em] text-black"><span>{filtered.length} sản phẩm</span><button className="md:hidden" onClick={() => setFilterOpen(true)}>Lọc sản phẩm</button></div>
+      <div className="mb-4 flex items-center justify-between border-b border-black/10 pb-3 text-[10px] uppercase tracking-[.08em] text-black"><span>Danh sách sản phẩm</span><button className="md:hidden" onClick={() => setFilterOpen(true)}>Lọc sản phẩm</button></div>
       {filtered.length ? <div className="grid grid-cols-1 gap-x-5 gap-y-8 sm:grid-cols-2 xl:grid-cols-3 2xl:gap-x-7">{filtered.map((product, index) => <ProductCard key={product.slug} product={product} index={index} onAdd={onAdd} onWishlist={onWishlist} wished={wishlist.includes(product.slug)} />)}</div> : <div className="grid min-h-72 place-items-center text-center"><div><p className="font-display text-2xl">Chưa có sản phẩm phù hợp</p><button className="pill-button mt-5 text-xs" onClick={resetFilters}>Xóa bộ lọc</button></div></div>}
     </section>
   </main>;

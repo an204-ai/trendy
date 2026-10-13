@@ -177,7 +177,7 @@ export default function SiteHeader({ route, cartCount, search, setSearch, onAcco
       <div className="mx-auto flex max-w-[1120px] justify-end"><button className="grid h-10 w-10 place-items-center" onClick={closeSearch} aria-label="Đóng tìm kiếm"><Icon name="close" /></button></div>
       <label className="mx-auto mt-12 flex max-w-[1120px] items-center gap-4 border-b border-black pb-3 md:mt-16">
         <Icon name="search" className="h-6 w-6 shrink-0" />
-        <input autoFocus className="min-w-0 flex-1 border-0 bg-transparent px-0 text-base outline-none placeholder:text-black md:text-lg" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Nhập từ khóa tìm kiếm" />
+        <input autoFocus className="min-w-0 flex-1 border-0 bg-transparent px-0 text-base outline-none placeholder:text-neutral-400 md:text-lg" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Nhập từ khóa tìm kiếm" />
         {search && <button className="shrink-0 text-xs uppercase tracking-[.08em]" onClick={() => setSearch("")} type="button">Xóa</button>}
       </label>
       <div className="mx-auto mt-10 max-w-[1120px] md:mt-16">
@@ -214,7 +214,7 @@ function SearchProductGrid({ products }) {
       const cutout = Boolean(product.front);
       return <a key={product.slug} className="search-product group block min-w-0" href={`/product/${product.slug}`}>
         <div className="search-product-image relative aspect-[.92] overflow-hidden bg-white">
-          <img className={`h-full w-full transition-transform duration-500 group-hover:scale-[1.04] ${cutout ? "object-contain p-5 mix-blend-multiply md:p-7" : "object-cover object-center"}`} src={product.front || product.image} alt={product.name} />
+          <img className={`h-full w-full ${cutout ? "object-contain p-5 mix-blend-multiply md:p-7" : "object-cover object-center"}`} src={product.front || product.image} alt={product.name} />
           <span className="absolute bottom-2.5 left-2.5 text-[9px] uppercase tracking-[.06em]">{getPrimaryProductMenuCategory(product)}</span>
         </div>
         <div className="flex items-baseline justify-between gap-2 px-0.5 pt-3">

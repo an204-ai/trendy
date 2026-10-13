@@ -81,6 +81,13 @@ export class ChatService {
     return { id: conversation.id, status: conversation.status };
   }
 
+  async deleteConversation(conversationId: string) {
+    const conversation = await this.conversations.findOneBy({ id: conversationId });
+    if (!conversation) throw new NotFoundException("Không tìm thấy hội thoại");
+    await this.conversations.delete(conversationId);
+    return { success: true, id: conversationId };
+  }
+
   private presentMessage(message: ChatMessage) {
     return {
       id: message.id,

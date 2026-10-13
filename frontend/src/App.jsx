@@ -13,11 +13,11 @@ import { getProduct, getProductMenuCategory, getProductVariant, getStorefrontCon
 import { AccountAuthPage, CustomerOrderDetailPage, CustomerOrdersPage, CustomerProfilePage, CustomerWishlistPage } from "./features/customer/AccountPages.jsx";
 import { AdminOverviewPage } from "./features/admin/AdminOverviewPage.jsx";
 import { AdminStaffPage } from "./features/admin/AdminStaffPage.jsx";
-import { StaffLoginPage, StaffOrdersPage } from "./features/staff/StaffPages.jsx";
+import { StaffCustomersPage, StaffLoginPage, StaffOrdersPage } from "./features/staff/StaffPages.jsx";
 import { StaffCategoriesPage, StaffProductsPage, StaffPromotionsPage } from "./features/staff/StaffCatalogPages.jsx";
 import { StaffChatPage } from "./features/staff/StaffChatPage.jsx";
 import CustomerChatWidget from "./features/customer/CustomerChatWidget.jsx";
-import { createStaffUser, getMyOrder, getMyOrders, getStaffOrder, getStaffOrders, login, loginStaff, loginWithGoogle, logout, placeCodOrder, register, restoreSession, updateMyProfile, updateStaffOrder } from "./shared/services/api.js";
+import { createStaffUser, getMyOrder, getMyOrders, getStaffOrder, getStaffOrders, login, loginStaff, loginWithGoogle, logout, logoutStaff, placeCodOrder, register, restoreSessions, updateMyProfile, updateStaffOrder } from "./shared/services/api.js";
 
 const loadLocal = (key, fallback) => {
   try { return JSON.parse(localStorage.getItem(key)) ?? fallback; } catch { return fallback; }
@@ -53,7 +53,8 @@ export default function App() {
   const [toast, setToast] = useState("");
   const [selectedVariant, setSelectedVariant] = useState("");
   const [zoomImage, setZoomImage] = useState("");
-  const [authUser, setAuthUser] = useState(null);
+  const [customerUser, setCustomerUser] = useState(null);
+  const [staffUser, setStaffUser] = useState(null);
   const [authReady, setAuthReady] = useState(false);
   const [authBusy, setAuthBusy] = useState(false);
   const [authError, setAuthError] = useState("");
@@ -75,7 +76,22 @@ export default function App() {
 
   useEffect(() => {
     let active = true;
-    restoreSession().then(({ user }) => { if (active) setAuthUser(user); }).catch(() => { if (active) setAuthUser(null); }).finally(() => { if (active) setAuthReady(true); });
+    restoreSessions()
+      .then(({ customer, staff }) => {
+        if (active) {
+          setCustomerUser(customer);
+          setStaffUser(staff);
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setCustomerUser(null);
+          setStaffUser(null);
+        }
+      })
+      .finally(() => {
+        if (active) setAuthReady(true);
+      });
     return () => { active = false; };
   }, []);
 
@@ -156,22 +172,24 @@ export default function App() {
     else if (routePath === "/cart") title = pageTitles.cart;
     else if (routePath === "/checkout") title = pageTitles.checkout;
     else if (routePath === "/legal") title = pageTitles.legal;
+    else if (routePath === "/privacy") title = pageTitles.privacy;
     else if (routePath === "/order-complete") title = pageTitles.complete;
     else if (routePath.startsWith("/account")) title = routePath.includes("register") ? "Đăng ký" : routePath.includes("login") ? "Đăng nhập" : routePath.includes("wishlist") ? "Yêu thích" : routePath.includes("profile") ? "Hồ sơ" : "Đơn hàng";
     else if (routePath === "/admin") title = "Tổng quan";
     else if (routePath === "/admin/staff") title = "Nhân viên";
-    else if (routePath.startsWith("/staff")) title = routePath === "/staff/login" ? "Đăng nhập nội bộ" : ({ "/staff/orders": "Đơn hàng", "/staff/products": "Sản phẩm", "/staff/categories": "Danh mục", "/staff/promotions": "Khuyến mãi", "/staff/chat": "Chăm sóc khách hàng" }[routePath] || "Khu vực nội bộ");
+    else if (routePath.startsWith("/staff")) title = routePath === "/staff/login" ? "Đăng nhập nội bộ" : ({ "/staff/orders": "Đơn hàng", "/staff/products": "Sản phẩm", "/staff/categories": "Danh mục", "/staff/promotions": "Khuyến mãi", "/staff/customers": "Khách hàng", "/staff/chat": "Chăm sóc khách hàng" }[routePath] || "Khu vực nội bộ");
     document.title = `${title} — ${getStorefrontContent().siteName}`;
   }, [routePath, query]);
 
-  const addToCart = (product, variantSku) => {
+  const addToCart = (product, variantSku, quantity = 1) => {
     const selectedVariant = getProductVariant(product, variantSku);
     const targetLine = { slug: product.slug, sku: selectedVariant?.sku || product.sku, ...(selectedVariant?.name ? { variant: selectedVariant.name } : {}) };
+    const addQty = Math.max(1, Number(quantity) || 1);
     setCart((items) => {
       const existing = items.find((item) => sameCartLine(item, targetLine));
       return existing
-        ? items.map((item) => item === existing ? { ...item, qty: item.qty + 1 } : item)
-        : [...items, { ...targetLine, qty: 1 }];
+        ? items.map((item) => item === existing ? { ...item, qty: item.qty + addQty } : item)
+        : [...items, { ...targetLine, qty: addQty }];
     });
     setToast(`${product.name} đã được thêm vào túi hàng`);
   };
@@ -194,9 +212,9 @@ export default function App() {
       const user = routePath.endsWith("register")
         ? await register({ email: values.email, password: values.password, fullName: values.fullName, phone: values.phone })
         : await login(values.email, values.password);
-      setAuthUser(user);
+      setCustomerUser(user);
       const next = query.get("next");
-      navigate(next?.startsWith("/") ? next : user.role === "CUSTOMER" ? "/account/profile" : user.role === "ADMIN" ? "/admin" : "/staff/orders");
+      navigate(next?.startsWith("/") ? next : "/account/profile");
     } catch (error) { setAuthError(error.message); }
     finally { setAuthBusy(false); }
   };
@@ -205,7 +223,7 @@ export default function App() {
     setAuthBusy(true); setAuthError("");
     try {
       const user = await loginStaff(values.email, values.password);
-      setAuthUser(user);
+      setStaffUser(user);
       navigate(user.role === "ADMIN" ? "/admin" : "/staff/orders");
     } catch (error) { setAuthError(error.message); }
     finally { setAuthBusy(false); }
@@ -219,7 +237,7 @@ export default function App() {
     setAuthBusy(true); setAuthError("");
     try {
       const user = await loginWithGoogle(credential, nonce);
-      setAuthUser(user);
+      setCustomerUser(user);
       const next = query.get("next");
       navigate(next?.startsWith("/") ? next : "/account/profile");
     } catch (error) { setAuthError(error.message); }
@@ -230,20 +248,21 @@ export default function App() {
     setAuthBusy(true); setAuthError("");
     try {
       const user = await updateMyProfile(values);
-      setAuthUser(user);
+      setCustomerUser(user);
       setToast("Hồ sơ của bạn đã được cập nhật");
     } catch (error) { setAuthError(error.message); }
     finally { setAuthBusy(false); }
   };
 
   const submitOrder = async (values) => {
-    if (!authUser) { navigate("/account/login?next=%2Fcheckout"); return; }
+    if (!customerUser) { navigate("/account/login?next=%2Fcheckout"); return; }
     setCheckoutBusy(true); setCheckoutError("");
     try {
       const order = await placeCodOrder({
         items: cart.map((item) => ({ sku: item.sku || getProduct(item.slug)?.sku, quantity: item.qty })),
-        shipping: { recipientName: values.recipientName, email: values.email, phone: values.phone, addressLine: values.addressLine, ward: values.ward, district: values.district, province: values.province },
+        shipping: { recipientName: values.recipientName, email: values.email, phone: values.phone, addressLine: values.addressLine, ward: values.ward, district: values.district || undefined, province: values.province },
         note: values.note,
+        promotionCode: values.promotionCode || undefined,
       }, crypto.randomUUID());
       setCart([]);
       navigate(`/account/orders/${encodeURIComponent(order.orderCode)}`);
@@ -251,11 +270,18 @@ export default function App() {
     finally { setCheckoutBusy(false); }
   };
 
-  const signOut = async () => {
-    try { await logout(); } catch { /* Local sign-out still clears the in-memory token. */ }
-    setAuthUser(null);
-    setToast("Đã đăng xuất");
-    navigate(routePath.startsWith("/staff") || routePath.startsWith("/admin") ? "/staff/login" : "/account/login");
+  const signOutCustomer = async () => {
+    try { await logout(); } catch {}
+    setCustomerUser(null);
+    setToast("Đã đăng xuất tài khoản");
+    navigate("/account/login");
+  };
+
+  const signOutStaff = async () => {
+    try { await logoutStaff(); } catch {}
+    setStaffUser(null);
+    setToast("Đã đăng xuất nội bộ");
+    navigate("/staff/login");
   };
 
   let page;
@@ -263,37 +289,41 @@ export default function App() {
   else if (routePath === "/store") page = <StorePage key={`store-${catalogVersion}`} catalogVersion={catalogVersion} category={query.get("category") || "All"} subCategory={query.get("subCategory")} onAdd={addToCart} onWishlist={toggleWishlist} wishlist={wishlist} />;
   else if (routePath === "/stores") page = <StoresPage />;
   else if (routePath === "/stories") page = <StoriesPage />;
-  else if (routePath.startsWith("/stories/")) page = <StoryDetailPage slug={routePath.split("/")[2]} onAdd={addToCart} onWishlist={toggleWishlist} wishlist={wishlist} />;
+  else if (routePath.startsWith("/stories/")) page = <StoryDetailPage key={`story-${routePath}-${catalogVersion}`} slug={routePath.split("/")[2]} onAdd={addToCart} onWishlist={toggleWishlist} wishlist={wishlist} />;
   else if (routePath.startsWith("/product/")) page = <ProductPage slug={routePath.split("/")[2]} onAdd={addToCart} onWishlist={toggleWishlist} wishlist={wishlist} selectedVariant={selectedVariant} setSelectedVariant={setSelectedVariant} onZoom={setZoomImage} />;
   else if (routePath === "/cart") page = <CartPage cart={cart} onQuantity={changeQuantity} onRemove={removeFromCart} />;
-  else if (routePath === "/checkout") page = authReady ? <CheckoutPage cart={cart} user={authUser} onSubmit={submitOrder} busy={checkoutBusy} error={checkoutError} /> : <main className="grid min-h-[70vh] place-items-center pt-24 text-sm">Đang kiểm tra phiên đăng nhập…</main>;
+  else if (routePath === "/checkout") page = authReady ? <CheckoutPage cart={cart} user={customerUser} onSubmit={submitOrder} busy={checkoutBusy} error={checkoutError} /> : <main className="grid min-h-[70vh] place-items-center pt-24 text-sm">Đang kiểm tra phiên đăng nhập…</main>;
   else if (routePath === "/account/login" || routePath === "/account/register") page = <AccountAuthPage mode={routePath.endsWith("register") ? "register" : "login"} onSubmit={submitAuth} onGoogle={submitGoogleAuth} busy={authBusy} error={authError} />;
-  else if (routePath === "/account/profile") page = !authReady ? <AuthLoadingPage /> : authUser?.role === "CUSTOMER" ? <CustomerProfilePage user={authUser} onSave={saveProfile} onLogout={signOut} onAdd={addToCart} onWishlist={toggleWishlist} wishlist={wishlist} loadOrders={getMyOrders} openOrder={(code) => navigate(`/account/orders/${encodeURIComponent(code)}`)} busy={authBusy} error={authError} /> : <AccountAuthPage mode="login" onSubmit={submitAuth} onGoogle={submitGoogleAuth} busy={authBusy} error={authUser ? "Vui lòng đăng nhập bằng tài khoản khách hàng." : authError} />;
-  else if (routePath === "/account/orders") page = !authReady ? <AuthLoadingPage /> : authUser?.role === "CUSTOMER" ? <CustomerOrdersPage user={authUser} onLogout={signOut} loadOrders={getMyOrders} openOrder={(code) => navigate(`/account/orders/${encodeURIComponent(code)}`)} /> : <AccountAuthPage mode="login" onSubmit={submitAuth} onGoogle={submitGoogleAuth} busy={authBusy} error={authUser ? "Vui lòng đăng nhập bằng tài khoản khách hàng." : ""} />;
-  else if (routePath === "/account/wishlist") page = !authReady ? <AuthLoadingPage /> : authUser?.role === "CUSTOMER" ? <CustomerWishlistPage wishlist={wishlist} onWishlist={toggleWishlist} onAdd={addToCart} onLogout={signOut} /> : <AccountAuthPage mode="login" onSubmit={submitAuth} onGoogle={submitGoogleAuth} busy={authBusy} error={authUser ? "Vui lòng đăng nhập bằng tài khoản khách hàng." : ""} />;
-  else if (routePath.startsWith("/account/orders/")) page = !authReady ? <AuthLoadingPage /> : authUser?.role === "CUSTOMER" ? <CustomerOrderDetailPage orderCode={decodeURIComponent(routePath.split("/")[3] || "")} loadOrder={getMyOrder} onLogout={signOut} /> : <AccountAuthPage mode="login" onSubmit={submitAuth} onGoogle={submitGoogleAuth} busy={authBusy} error={authUser ? "Vui lòng đăng nhập để theo dõi đơn hàng." : ""} />;
-  else if (routePath === "/staff/login") page = !authReady ? <AuthLoadingPage /> : <StaffLoginPage onSubmit={submitStaffAuth} onLogout={signOut} busy={authBusy} error={authUser && authUser.role === "CUSTOMER" ? "Tài khoản khách hàng không thể đăng nhập tại đây." : authError} user={authUser} />;
-  else if (routePath === "/staff/orders") page = !authReady ? <AuthLoadingPage /> : authUser && ["STAFF", "ADMIN"].includes(authUser.role) ? <StaffOrdersPage loadOrders={getStaffOrders} loadOrder={getStaffOrder} saveOrder={updateStaffOrder} onLogout={signOut} isAdmin={authUser.role === "ADMIN"} user={authUser} /> : <StaffLoginPage onSubmit={submitStaffAuth} onLogout={signOut} busy={authBusy} error={authUser ? "Tài khoản này không có quyền vào khu vực nội bộ." : authError} user={authUser} />;
-  else if (["/staff/products", "/staff/categories", "/staff/promotions", "/staff/chat"].includes(routePath)) {
-    const internalUser = authUser && ["STAFF", "ADMIN"].includes(authUser.role) ? authUser : null;
-    const internalProps = { user: internalUser, onLogout: signOut, isAdmin: internalUser?.role === "ADMIN" };
+  else if (routePath === "/account/profile") page = !authReady ? <AuthLoadingPage /> : customerUser ? <CustomerProfilePage user={customerUser} onSave={saveProfile} onLogout={signOutCustomer} onAdd={addToCart} onWishlist={toggleWishlist} wishlist={wishlist} loadOrders={getMyOrders} openOrder={(code) => navigate(`/account/orders/${encodeURIComponent(code)}`)} busy={authBusy} error={authError} /> : <AccountAuthPage mode="login" onSubmit={submitAuth} onGoogle={submitGoogleAuth} busy={authBusy} error={authError} />;
+  else if (routePath === "/account/orders") page = !authReady ? <AuthLoadingPage /> : customerUser ? <CustomerOrdersPage user={customerUser} onLogout={signOutCustomer} loadOrders={getMyOrders} openOrder={(code) => navigate(`/account/orders/${encodeURIComponent(code)}`)} /> : <AccountAuthPage mode="login" onSubmit={submitAuth} onGoogle={submitGoogleAuth} busy={authBusy} error={""} />;
+  else if (routePath === "/account/wishlist") page = !authReady ? <AuthLoadingPage /> : customerUser ? <CustomerWishlistPage wishlist={wishlist} onWishlist={toggleWishlist} onAdd={addToCart} onLogout={signOutCustomer} /> : <AccountAuthPage mode="login" onSubmit={submitAuth} onGoogle={submitGoogleAuth} busy={authBusy} error={""} />;
+  else if (routePath.startsWith("/account/orders/")) page = !authReady ? <AuthLoadingPage /> : customerUser ? <CustomerOrderDetailPage orderCode={decodeURIComponent(routePath.split("/")[3] || "")} loadOrder={getMyOrder} onLogout={signOutCustomer} /> : <AccountAuthPage mode="login" onSubmit={submitAuth} onGoogle={submitGoogleAuth} busy={authBusy} error={""} />;
+  else if (routePath === "/staff/login") page = !authReady ? <AuthLoadingPage /> : <StaffLoginPage onSubmit={submitStaffAuth} onLogout={signOutStaff} busy={authBusy} error={authError} user={staffUser} />;
+  else if (routePath === "/staff/orders") page = !authReady ? <AuthLoadingPage /> : staffUser && ["STAFF", "ADMIN"].includes(staffUser.role) ? <StaffOrdersPage loadOrders={getStaffOrders} loadOrder={getStaffOrder} saveOrder={updateStaffOrder} onLogout={signOutStaff} isAdmin={staffUser.role === "ADMIN"} user={staffUser} /> : <StaffLoginPage onSubmit={submitStaffAuth} onLogout={signOutStaff} busy={authBusy} error={staffUser ? "Tài khoản này không có quyền vào khu vực nội bộ." : authError} user={staffUser} />;
+  else if (["/staff/products", "/staff/categories", "/staff/promotions", "/staff/chat", "/staff/customers"].includes(routePath)) {
+    const internalUser = staffUser && ["STAFF", "ADMIN"].includes(staffUser.role) ? staffUser : null;
+    const internalProps = { user: internalUser, onLogout: signOutStaff, isAdmin: internalUser?.role === "ADMIN" };
     page = !authReady ? <AuthLoadingPage /> : internalUser
       ? routePath === "/staff/products" ? <StaffProductsPage {...internalProps} onCatalogChanged={handleCatalogChanged} />
         : routePath === "/staff/categories" ? <StaffCategoriesPage {...internalProps} onCatalogChanged={handleCatalogChanged} />
-          : routePath === "/staff/promotions" ? <StaffPromotionsPage {...internalProps} /> : <StaffChatPage {...internalProps} />
-      : <StaffLoginPage onSubmit={submitStaffAuth} onLogout={signOut} busy={authBusy} error={authUser ? "Tài khoản này không có quyền vào khu vực nội bộ." : authError} user={authUser} />;
+          : routePath === "/staff/promotions" ? <StaffPromotionsPage {...internalProps} />
+            : routePath === "/staff/customers" ? <StaffCustomersPage {...internalProps} />
+              : <StaffChatPage {...internalProps} />
+      : <StaffLoginPage onSubmit={submitStaffAuth} onLogout={signOutStaff} busy={authBusy} error={staffUser ? "Tài khoản này không có quyền vào khu vực nội bộ." : authError} user={staffUser} />;
   }
-  else if (routePath === "/admin") page = !authReady ? <AuthLoadingPage /> : authUser?.role === "ADMIN" ? <AdminOverviewPage user={authUser} onLogout={signOut} loadOrders={getStaffOrders} /> : <StaffLoginPage onSubmit={submitStaffAuth} onLogout={signOut} busy={authBusy} error={authUser ? "Chỉ tài khoản admin được vào khu vực này." : "Đăng nhập bằng tài khoản admin để tiếp tục."} user={authUser} />;
-  else if (routePath === "/admin/staff") page = !authReady ? <AuthLoadingPage /> : authUser?.role === "ADMIN" ? <AdminStaffPage user={authUser} onLogout={signOut} onCreateStaff={async (values) => (await createStaffUser(values)).user} /> : <StaffLoginPage onSubmit={submitStaffAuth} onLogout={signOut} busy={authBusy} error={authUser ? "Chỉ tài khoản admin được tạo nhân viên." : "Đăng nhập bằng tài khoản admin để tiếp tục."} user={authUser} />;
+  else if (routePath === "/admin") page = !authReady ? <AuthLoadingPage /> : staffUser?.role === "ADMIN" ? <AdminOverviewPage user={staffUser} onLogout={signOutStaff} loadOrders={getStaffOrders} /> : <StaffLoginPage onSubmit={submitStaffAuth} onLogout={signOutStaff} busy={authBusy} error={staffUser ? "Chỉ tài khoản admin được vào khu vực này." : "Đăng nhập bằng tài khoản admin để tiếp tục."} user={staffUser} />;
+  else if (routePath === "/admin/staff") page = !authReady ? <AuthLoadingPage /> : staffUser?.role === "ADMIN" ? <AdminStaffPage user={staffUser} onLogout={signOutStaff} onCreateStaff={async (values) => (await createStaffUser(values)).user} /> : <StaffLoginPage onSubmit={submitStaffAuth} onLogout={signOutStaff} busy={authBusy} error={staffUser ? "Chỉ tài khoản admin được tạo nhân viên." : "Đăng nhập bằng tài khoản admin để tiếp tục."} user={staffUser} />;
   else if (routePath === "/order-complete") page = <CompletePage />;
-  else if (routePath === "/legal") page = <InfoPage />;
+  else if (routePath === "/legal" || routePath === "/privacy") page = <InfoPage initialTab={routePath === "/privacy" ? "privacy" : "legal"} />;
   else page = <NotFound />;
 
+  const showStoreChrome = !isInternalRoute;
+
   return <>
-    {!isInternalRoute && <SiteHeader route={routePath} cartCount={cartCount} search={search} setSearch={setSearch} onAccount={() => navigate(authUser?.role === "ADMIN" ? "/admin" : authUser?.role === "STAFF" ? "/staff/orders" : authUser ? "/account/profile" : "/account/login")} />}
+    {showStoreChrome && <SiteHeader route={routePath} cartCount={cartCount} search={search} setSearch={setSearch} onAccount={() => navigate(customerUser ? "/account/profile" : "/account/login")} />}
     {page}
-    {!isInternalRoute && <CustomerChatWidget user={authUser} />}
-    {!isInternalRoute && <SiteFooter onSubscribe={() => setToast("Cảm ơn bạn đã đăng ký nhận tin")} />}
+    {showStoreChrome && <CustomerChatWidget user={customerUser} />}
+    {showStoreChrome && <SiteFooter onSubscribe={() => setToast("Cảm ơn bạn đã đăng ký nhận tin")} />}
     {toast && <div className="toast" role="status">{toast}</div>}
     {zoomImage && <div className="zoom-modal" role="dialog" aria-modal="true" onClick={() => setZoomImage("")}><button className="absolute right-5 top-5 text-white" aria-label="Đóng hình"><Icon name="close" className="h-7 w-7" /></button><img src={zoomImage} alt="Hình sản phẩm được phóng to" /></div>}
   </>;

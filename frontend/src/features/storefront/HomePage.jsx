@@ -6,7 +6,7 @@ function HomeProductCard({ product, onWishlist, wished, image, sizeClass, imageF
   return <article className={`home-product-card group relative min-w-0 shrink-0 ${sizeClass}`}>
     <div className="home-product-image relative aspect-square overflow-hidden bg-[#f5f6f7]">
       <a className="absolute inset-0 flex items-center justify-center" href={`/product/${product.slug}`} aria-label={`Xem ${product.name}`} tabIndex={interactive ? undefined : -1}>
-        <img className={`h-full w-full ${imageFit === "contain" ? "object-contain p-[8%] mix-blend-multiply" : "object-cover object-top"} transition-transform duration-500 group-hover:scale-[1.035]`} src={image || product.image} alt={product.name} />
+        <img className={`h-full w-full ${imageFit === "contain" ? "object-contain p-[8%] mix-blend-multiply" : "object-cover object-top"}`} src={image || product.image} alt={product.name} />
       </a>
       <button className="absolute right-3 top-3 grid h-9 w-9 place-items-center rounded-full bg-white/90 text-black shadow-sm transition hover:bg-white" onClick={() => onWishlist?.(product.slug)} aria-label={wished ? "Bỏ khỏi danh sách yêu thích" : "Thêm vào danh sách yêu thích"} aria-pressed={wished} tabIndex={interactive ? undefined : -1}>
         <Icon name="heart" className="h-[18px] w-[18px]" filled={wished} />
@@ -58,16 +58,20 @@ function LookbookSection({ section, wishlist, onWishlist, carouselRef }) {
   const cardRefs = useRef([]);
   const thumbnailRefs = useRef([]);
   const thumbnailViewportRef = useRef(null);
+  const isSyncingRef = useRef(false);
   const [activeIndex, setActiveIndex] = useState(0);
   const dragHandlers = useMouseDragCarousel();
   const productCount = section?.products?.length || 0;
 
-  useLayoutEffect(() => {
+  useEffect(() => {
     if (!productCount) return;
     const carousel = carouselRef.current;
     const firstMiddleCard = cardRefs.current[productCount];
     if (!carousel || !firstMiddleCard) return;
-    carousel.scrollLeft += firstMiddleCard.getBoundingClientRect().left - carousel.getBoundingClientRect().left;
+    const offset = firstMiddleCard.getBoundingClientRect().left - carousel.getBoundingClientRect().left;
+    if (Math.abs(offset) > 1) {
+      carousel.scrollLeft += offset;
+    }
     syncActiveSlide();
   }, [productCount]);
 
@@ -75,36 +79,45 @@ function LookbookSection({ section, wishlist, onWishlist, carouselRef }) {
 
   const syncActiveSlide = () => {
     const carousel = carouselRef.current;
-    if (!carousel) return;
-    const cycleWidth = getCycleWidth();
-    if (cycleWidth > 0) {
-      while (carousel.scrollLeft < cycleWidth) carousel.scrollLeft += cycleWidth;
-      while (carousel.scrollLeft >= cycleWidth * 2) carousel.scrollLeft -= cycleWidth;
-    }
-    const thumbnailViewport = thumbnailViewportRef.current;
-    if (thumbnailViewport) {
-      const firstMiddleThumb = thumbnailRefs.current[productCount];
-      const firstTrailingThumb = thumbnailRefs.current[productCount * 2];
-      const thumbnailCycleWidth = firstMiddleThumb && firstTrailingThumb
-        ? firstTrailingThumb.getBoundingClientRect().left - firstMiddleThumb.getBoundingClientRect().left
-        : 0;
-      const cyclePosition = cycleWidth > 0 ? ((carousel.scrollLeft - cycleWidth) % cycleWidth + cycleWidth) % cycleWidth : 0;
-      const progress = cycleWidth > 0 ? cyclePosition / cycleWidth : 0;
-      thumbnailViewport.scrollLeft = thumbnailCycleWidth * (1 + progress);
-    }
-    const left = carousel.getBoundingClientRect().left;
-    let closestIndex = 0;
-    let closestDistance = Infinity;
-    cardRefs.current.forEach((card, index) => {
-      if (!card) return;
-      const distance = Math.abs(card.getBoundingClientRect().left - left);
-      if (distance < closestDistance) {
-        closestDistance = distance;
-        closestIndex = index;
+    if (!carousel || isSyncingRef.current) return;
+    isSyncingRef.current = true;
+    try {
+      const cycleWidth = getCycleWidth();
+      const maxScroll = carousel.scrollWidth - carousel.clientWidth;
+      if (cycleWidth > 0 && maxScroll >= cycleWidth * 1.5) {
+        if (carousel.scrollLeft < cycleWidth) {
+          carousel.scrollLeft += cycleWidth;
+        } else if (carousel.scrollLeft >= cycleWidth * 2) {
+          carousel.scrollLeft -= cycleWidth;
+        }
       }
-    });
-    const productIndex = productCount > 0 ? closestIndex % productCount : 0;
-    setActiveIndex((current) => current === productIndex ? current : productIndex);
+      const thumbnailViewport = thumbnailViewportRef.current;
+      if (thumbnailViewport) {
+        const firstMiddleThumb = thumbnailRefs.current[productCount];
+        const firstTrailingThumb = thumbnailRefs.current[productCount * 2];
+        const thumbnailCycleWidth = firstMiddleThumb && firstTrailingThumb
+          ? firstTrailingThumb.getBoundingClientRect().left - firstMiddleThumb.getBoundingClientRect().left
+          : 0;
+        const cyclePosition = cycleWidth > 0 ? ((carousel.scrollLeft - cycleWidth) % cycleWidth + cycleWidth) % cycleWidth : 0;
+        const progress = cycleWidth > 0 ? cyclePosition / cycleWidth : 0;
+        thumbnailViewport.scrollLeft = thumbnailCycleWidth * (1 + progress);
+      }
+      const left = carousel.getBoundingClientRect().left;
+      let closestIndex = 0;
+      let closestDistance = Infinity;
+      cardRefs.current.forEach((card, index) => {
+        if (!card) return;
+        const distance = Math.abs(card.getBoundingClientRect().left - left);
+        if (distance < closestDistance) {
+          closestDistance = distance;
+          closestIndex = index;
+        }
+      });
+      const productIndex = productCount > 0 ? closestIndex % productCount : 0;
+      setActiveIndex((current) => current === productIndex ? current : productIndex);
+    } finally {
+      isSyncingRef.current = false;
+    }
   };
 
   const getCycleWidth = () => {
@@ -195,9 +208,9 @@ function HomeHero({ hero }) {
     setActiveIndex(index);
   };
 
-  return <section className="home-hero relative grid min-h-[590px] h-[88svh] max-h-[960px] place-items-center overflow-hidden bg-neutral-600 text-center text-white">
+  return <section className="home-hero relative grid min-h-[590px] h-[88svh] max-h-[960px] place-items-center overflow-hidden bg-black text-center text-white">
     {hasActiveVideo
-      ? <video key={activeSlide.video} className="absolute inset-0 h-full w-full object-cover object-center" src={activeSlide.video} poster={activeSlide.poster || heroData.image} autoPlay muted playsInline preload="auto" aria-label="Video chiến dịch Trendy" onTimeUpdate={(event) => { const video = event.currentTarget; if (Number.isFinite(video.duration) && video.duration > 0) setProgress((video.currentTime / video.duration) * 100); }} onEnded={nextSlide} onError={() => setVideoFailed(true)} />
+      ? <video key={activeSlide.video} className="absolute inset-0 h-full w-full object-cover object-center" src={activeSlide.video} poster={activeSlide.poster || (activeSlide.video ? undefined : heroData.image)} autoPlay loop={slides.length <= 1} muted playsInline preload="auto" aria-label="Video chiến dịch Trendy" onTimeUpdate={(event) => { const video = event.currentTarget; if (Number.isFinite(video.duration) && video.duration > 0) setProgress((video.currentTime / video.duration) * 100); }} onEnded={slides.length > 1 ? nextSlide : undefined} onError={() => setVideoFailed(true)} />
       : <img key={activeSlide.poster || heroData.image} className="absolute inset-0 h-full w-full object-cover object-center" src={activeSlide.poster || heroData.image} alt="" />}
     <div className="hero-shade absolute inset-0" />
     <div className="absolute bottom-[16%] left-1/2 z-20 w-full -translate-x-1/2 px-5">
@@ -207,11 +220,13 @@ function HomeHero({ hero }) {
         <a className="hero-button inline-flex items-center justify-center" href={`/stories/${heroData.storySlug}`}>{heroData.storyLabel}</a>
       </div>
     </div>
-    <div className="absolute bottom-[5%] left-1/2 z-20 flex w-[min(42vw,780px)] -translate-x-1/2 gap-2" aria-label="Cảnh hero">
-      {slides.map((slide, index) => <button key={slide.video || slide.poster || index} className="hero-story-track h-px flex-1 overflow-hidden bg-white/40" type="button" onClick={() => selectSlide(index)} aria-label={`Chuyển đến cảnh ${index + 1}`} aria-current={index === activeIndex ? "step" : undefined}>
-        <span className={`hero-story-progress block h-full bg-white ${index < activeIndex ? "is-complete" : index === activeIndex && !hasActiveVideo ? "is-running" : ""}`} style={index === activeIndex ? hasActiveVideo ? { width: `${progress}%` } : { animationDuration: `${imageStoryDuration}ms` } : index < activeIndex ? { width: "100%" } : { width: "0%"}} />
-      </button>)}
-    </div>
+    {slides.length > 1 ? (
+      <div className="absolute bottom-[5%] left-1/2 z-20 flex w-[min(42vw,780px)] -translate-x-1/2 gap-2" aria-label="Cảnh hero">
+        {slides.map((slide, index) => <button key={slide.video || slide.poster || index} className="hero-story-track h-px flex-1 overflow-hidden bg-white/40" type="button" onClick={() => selectSlide(index)} aria-label={`Chuyển đến cảnh ${index + 1}`} aria-current={index === activeIndex ? "step" : undefined}>
+          <span className={`hero-story-progress block h-full bg-white ${index < activeIndex ? "is-complete" : index === activeIndex && !hasActiveVideo ? "is-running" : ""}`} style={index === activeIndex ? hasActiveVideo ? { width: `${progress}%` } : { animationDuration: `${imageStoryDuration}ms` } : index < activeIndex ? { width: "100%" } : { width: "0%"}} />
+        </button>)}
+      </div>
+    ) : null}
   </section>;
 }
 
@@ -223,14 +238,26 @@ export default function HomePage({ onWishlist, wishlist = [], catalogVersion }) 
 
   return <main className="min-h-screen bg-white text-black">
     <HomeHero hero={hero} />
-    {sections.filter((section) => section.products && section.products.length > 0).map((section, index) => <section id={index === 0 ? "latest-arrivals" : undefined} key={section.id} className={`home-product-section px-[2.2vw] ${index === 0 ? "pt-8" : "mt-12 pt-0 md:mt-16"} pb-7 md:pb-10`}>
-      <header className="mb-3 flex items-center justify-between gap-5 md:mb-4">
-        <h2 className="text-[10px] font-medium uppercase tracking-[.015em] md:text-xs">{section.title}</h2>
-        <a className="shrink-0 text-[9px] uppercase underline underline-offset-4" href="/store">{section.action}</a>
-      </header>
-      {section.display === "lookbook"
-        ? <LookbookSection section={section} wishlist={wishlist} onWishlist={onWishlist} carouselRef={latestCarouselRef} />
-        : <BestsellersSection section={section} wishlist={wishlist} onWishlist={onWishlist} carouselRef={bestCarouselRef} />}
-    </section>)}
+    {sections.map((section, index) => {
+      const hasProducts = Array.isArray(section?.products) && section.products.length > 0;
+      return <section id={index === 0 ? "latest-arrivals" : undefined} key={section.id} className={`home-product-section px-[2.2vw] ${index === 0 ? "pt-8" : "mt-12 pt-0 md:mt-16"} pb-7 md:pb-10`}>
+        <header className="mb-3 flex items-center justify-between gap-5 md:mb-4">
+          <h2 className="text-[10px] font-medium uppercase tracking-[.015em] md:text-xs">{section.title}</h2>
+          <a className="shrink-0 text-[9px] uppercase underline underline-offset-4" href="/store">{section.action}</a>
+        </header>
+        {hasProducts ? (
+          section.display === "lookbook"
+            ? <LookbookSection section={section} wishlist={wishlist} onWishlist={onWishlist} carouselRef={latestCarouselRef} />
+            : <BestsellersSection section={section} wishlist={wishlist} onWishlist={onWishlist} carouselRef={bestCarouselRef} />
+        ) : (
+          <div className="grid min-h-44 place-items-center rounded-xl border border-black/10 bg-[#fafafa] p-8 text-center sm:min-h-56">
+            <div className="flex flex-col items-center gap-2.5 text-black/50">
+              <Icon name="bag" className="h-6 w-6" />
+              <span className="text-xs uppercase tracking-[.1em]">Chưa có sản phẩm</span>
+            </div>
+          </div>
+        )}
+      </section>;
+    })}
   </main>;
 }

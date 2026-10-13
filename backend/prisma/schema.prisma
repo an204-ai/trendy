@@ -9,6 +9,7 @@ datasource db {
 
 model User {
   id            String          @id @default(uuid()) @db.Uuid
+  customerCode  String?         @unique @db.VarChar(32)
   email         String          @unique @db.VarChar(254)
   passwordHash  String          @db.VarChar(128)
   googleSubject String?         @unique @db.VarChar(255)
@@ -121,13 +122,15 @@ model ProductCategoryLink {
 model CustomerOrder {
   id             String               @id @default(uuid()) @db.Uuid
   orderCode      String               @unique @db.VarChar(32)
-  customerId     String               @db.Uuid
+  customerId     String?              @db.Uuid
   idempotencyKey String?              @db.VarChar(100)
   status         String               @default("RECEIVED") @db.VarChar(32)
   paymentMethod  String               @default("COD") @db.VarChar(8)
   paymentStatus  String               @default("UNPAID") @db.VarChar(16)
   subtotal       Int
   shippingFee    Int                  @default(0)
+  discountAmount Int                  @default(0)
+  promotionCode  String?              @db.VarChar(48)
   total          Int
   recipientName  String               @db.VarChar(120)
   email          String               @db.VarChar(254)
@@ -144,7 +147,7 @@ model CustomerOrder {
   createdAt      DateTime             @default(now()) @db.Timestamptz
   updatedAt      DateTime             @updatedAt @db.Timestamptz
 
-  customer       User                 @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  customer       User?                @relation(fields: [customerId], references: [id], onDelete: Restrict)
   items          OrderItem[]
   history        OrderStatusHistory[]
   transactions   OrderTransaction[]

@@ -31,6 +31,7 @@ export type OrderStatus =
 @Index("User_googleSubject_unique", ["googleSubject"], { unique: true, where: '"googleSubject" IS NOT NULL' })
 export class User {
   @PrimaryGeneratedColumn("uuid") id: string;
+  @Column({ type: "varchar", length: 32, nullable: true, unique: true }) customerCode: string | null;
   @Column({ type: "varchar", length: 254 }) email: string;
   @Column({ type: "varchar", length: 128 }) passwordHash: string;
   @Column({ type: "varchar", length: 255, nullable: true }) googleSubject: string | null;
@@ -140,13 +141,15 @@ export class ProductCategoryLink {
 export class CustomerOrder {
   @PrimaryGeneratedColumn("uuid") id: string;
   @Column({ type: "varchar", length: 32 }) orderCode: string;
-  @Column({ type: "uuid" }) customerId: string;
+  @Column({ type: "uuid", nullable: true }) customerId: string | null;
   @Column({ type: "varchar", length: 100, nullable: true }) idempotencyKey: string | null;
   @Column({ type: "varchar", length: 32, default: "RECEIVED" }) status: OrderStatus;
   @Column({ type: "varchar", length: 8, default: "COD" }) paymentMethod: string;
   @Column({ type: "varchar", length: 16, default: "UNPAID" }) paymentStatus: string;
   @Column({ type: "integer" }) subtotal: number;
   @Column({ type: "integer", default: 0 }) shippingFee: number;
+  @Column({ type: "integer", default: 0 }) discountAmount: number;
+  @Column({ type: "varchar", length: 48, nullable: true }) promotionCode: string | null;
   @Column({ type: "integer" }) total: number;
   @Column({ type: "varchar", length: 120 }) recipientName: string;
   @Column({ type: "varchar", length: 254 }) email: string;
@@ -162,8 +165,8 @@ export class CustomerOrder {
   @Column({ type: "timestamptz", nullable: true }) deletedAt: Date | null;
   @CreateDateColumn({ type: "timestamptz" }) createdAt: Date;
   @UpdateDateColumn({ type: "timestamptz" }) updatedAt: Date;
-  @ManyToOne(() => User, (user) => user.orders, { onDelete: "RESTRICT" })
-  @JoinColumn({ name: "customerId" }) customer: User;
+  @ManyToOne(() => User, (user) => user.orders, { nullable: true, onDelete: "SET NULL" })
+  @JoinColumn({ name: "customerId" }) customer: User | null;
   @OneToMany(() => OrderItem, (item) => item.order) items: OrderItem[];
   @OneToMany(() => OrderStatusHistory, (history) => history.order) history: OrderStatusHistory[];
   @OneToMany(() => OrderTransaction, (transaction) => transaction.order) transactions: OrderTransaction[];

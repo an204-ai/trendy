@@ -1,5 +1,6 @@
+import { useState, useEffect } from "react";
 import ProductCard from "../../shared/components/ProductCard.jsx";
-import { getProduct, getStories, getStorefrontContent } from "../../shared/services/storefront.js";
+import { getProduct, getProducts, getStories, getStorefrontContent } from "../../shared/services/storefront.js";
 
 const stories = getStories();
 const pageContent = getStorefrontContent().stories;
@@ -13,7 +14,7 @@ function StoryBanner({ story, featured = false }) {
     href={`/stories/${story.slug}`}
     aria-label={`Đọc câu chuyện: ${text.title}`}
   >
-    <img className="absolute inset-0 h-full w-full object-cover transition-transform duration-[1200ms] group-hover:scale-[1.02]" src={story.cardImage} alt={text.title} />
+    <img className="absolute inset-0 h-full w-full object-cover" src={story.cardImage} alt={text.title} />
     <div className="absolute inset-0 bg-gradient-to-t from-black/65 via-black/10 to-black/10" />
     <div className={`absolute inset-x-0 bottom-0 flex items-end justify-between gap-5 ${featured ? "p-5 pb-12 md:p-[4.2vw] md:pb-[5vw]" : "p-5 md:p-[4.2vw]"}`}>
       <div className={`max-w-2xl ${featured ? "max-w-3xl" : ""}`}>
@@ -28,9 +29,9 @@ function StoryBanner({ story, featured = false }) {
   </a>;
 }
 
-function StoryImage({ src, alt, className = "", blend = true }) {
+function StoryImage({ src, alt, className = "", blend = false }) {
   return <div className={`relative overflow-hidden ${className}`}>
-    <img className={`h-full w-full object-cover transition-transform duration-700 hover:scale-[1.025] ${blend ? "mix-blend-multiply" : ""}`} src={src} alt={alt} loading="lazy" />
+    <img className={`h-full w-full object-cover ${blend ? "mix-blend-multiply" : ""}`} src={src} alt={alt} loading="lazy" />
   </div>;
 }
 
@@ -102,9 +103,28 @@ export function StoriesPage() {
 
 export function StoryDetailPage({ slug, onAdd, onWishlist, wishlist }) {
   const story = stories.find((item) => item.slug === slug);
+  const [products, setProducts] = useState(() => getProducts());
+
+  useEffect(() => {
+    const update = () => setProducts(getProducts());
+    update();
+    window.addEventListener("focus", update);
+    window.addEventListener("storage", update);
+    return () => {
+      window.removeEventListener("focus", update);
+      window.removeEventListener("storage", update);
+    };
+  }, []);
+
   if (!story) return <NotFound />;
   const text = storyCopy(story);
-  const related = (story.relatedProducts || []).map(getProduct).filter(Boolean);
+
+  const related = (() => {
+    const explicit = (story.relatedProducts || []).map(getProduct).filter(Boolean);
+    if (explicit.length > 0) return explicit;
+    return products.slice(0, 4);
+  })();
+
   const articleSections = text.sections || [];
 
   return <main className="pb-16 pt-[76px] md:pb-20">
