@@ -18,7 +18,6 @@ RUN npm ci --omit=dev
 COPY prisma ./prisma
 RUN npx prisma generate
 COPY --from=build /app/dist ./dist
-RUN chown -R node:node /app
 USER node
 EXPOSE 3000
 CMD ["node", "dist/main.js"]
