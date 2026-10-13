@@ -54,7 +54,7 @@ export const stories = [
 ];
 
 export const homeHero = {
-  title: "THIẾT KẾ MỚI",
+  title: "Thiết kế mới",
   image: "https://res.cloudinary.com/loovmj5w/video/upload/v1791862821/video_ngang_cho_page.jpg",
   slides: [
     {
@@ -62,8 +62,8 @@ export const homeHero = {
       poster: "https://res.cloudinary.com/loovmj5w/video/upload/v1791862821/video_ngang_cho_page.jpg",
     },
   ],
-  shopLabel: "MUA NGAY",
-  storyLabel: "CÂU CHUYỆN",
+  shopLabel: "Mua ngay",
+  storyLabel: "Câu chuyện",
   storySlug: "chat-lieu-sac-mau",
   category: "All",
 };
@@ -71,16 +71,16 @@ export const homeHero = {
 export const homeSections = [
   {
     id: "new-arrivals",
-    title: "MỚI NHẤT: THIẾT KẾ VỪA RA MẮT",
+    title: "Mới nhất: Thiết kế vừa ra mắt",
     display: "lookbook",
-    action: "XEM THÊM",
-    previewLabel: "XEM SẢN PHẨM",
+    action: "Xem thêm",
+    previewLabel: "Xem sản phẩm",
   },
   {
     id: "top-this-week",
-    title: "BÁN CHẠY NHẤT TUẦN NÀY",
+    title: "Bán chạy nhất tuần này",
     display: "cutout",
-    action: "XEM THÊM",
+    action: "Xem thêm",
   },
 ];
 
@@ -129,30 +129,30 @@ export const stores = [
 ];
 
 export const storefrontContent = {
-  siteName: "TRENDY",
+  siteName: "TrendyEye",
   pageTitles: {
-    home: "TRANG CHỦ",
-    store: { All: "CỬA HÀNG", Sunglasses: "KÍNH RÂM", Glasses: "KÍNH MẮT" },
-    stores: "TÌM CỬA HÀNG",
-    stories: "CÂU CHUYỆN",
-    cart: "TÚI HÀNG",
-    checkout: "THANH TOÁN",
-    legal: "THÔNG TIN PHÁP LÝ",
-    privacy: "CHÍNH SÁCH BẢO MẬT",
-    complete: "ĐẶT HÀNG THÀNH CÔNG",
-    product: "SẢN PHẨM",
+    home: "Trang chủ",
+    store: { All: "Cửa hàng", Sunglasses: "Kính râm", Glasses: "Kính mắt" },
+    stores: "Tìm cửa hàng",
+    stories: "Câu chuyện",
+    cart: "Túi hàng",
+    checkout: "Thanh toán",
+    legal: "Thông tin pháp lý",
+    privacy: "Chính sách bảo mật",
+    complete: "Đặt hàng thành công",
+    product: "Sản phẩm",
   },
   navigation: {
     items: [
       { label: "Cửa hàng", href: "/stores" },
       { label: "Câu chuyện", href: "/stories" },
     ],
-    locale: "VIỆT NAM · TIẾNG VIỆT · VNĐ",
+    locale: "Việt Nam · Tiếng Việt · VNĐ",
   },
-  home: { wishlistLabel: "THÊM VÀO DANH SÁCH YÊU THÍCH" },
-  stories: { allStories: "TẤT CẢ CÂU CHUYỆN", start: "Khám phá" },
+  home: { wishlistLabel: "Thêm vào danh sách yêu thích" },
+  stories: { allStories: "Tất cả câu chuyện", start: "Khám phá" },
   stores: {
-    title: "CỬA HÀNG",
+    title: "Cửa hàng",
     filtersLabel: "Bộ lọc",
     countryLabel: "Quốc gia / Khu vực",
     cityLabel: "Thành phố",
@@ -182,9 +182,9 @@ export const storefrontContent = {
     ],
     sortOptions: ["Nổi bật", "Giá thấp đến cao", "Giá cao đến thấp", "Tên sản phẩm"],
     title: {
-      All: "TẤT CẢ SẢN PHẨM",
-      "kinh-can": "KÍNH CẬN",
-      "kinh-thoi-trang": "KÍNH THỜI TRANG",
+      All: "Tất cả sản phẩm",
+      "kinh-can": "Kính cận",
+      "kinh-thoi-trang": "Kính thời trang",
     },
     description: {
       All: "Những thiết kế kính được chọn lọc cho phong cách riêng của bạn.",
@@ -193,16 +193,16 @@ export const storefrontContent = {
     },
   },
   product: {
-    detailsTitle: "CHI TIẾT",
-    sizingTitle: "KÍCH THƯỚC & ĐỘ VỪA",
-    shippingTitle: "GIAO HÀNG & ĐỔI TRẢ",
+    detailsTitle: "Chi tiết",
+    sizingTitle: "Kích thước & độ vừa",
+    shippingTitle: "Giao hàng & đổi trả",
     shippingDescription: "Miễn phí giao hàng. Đơn hàng được xử lý và gửi đi trong khoảng 5–7 ngày làm việc.",
     returnDescription: "Hỗ trợ đổi trả trong vòng 7 ngày kể từ khi nhận hàng.",
     taxDescription: "Giá đã bao gồm thuế và phí áp dụng.",
-    addToCart: "THÊM VÀO GIỎ",
+    addToCart: "Thêm vào giỏ",
     shippingNote: "Miễn phí giao hàng · Đã gồm thuế và phí",
     storeLocator: "Tìm cửa hàng",
-    recommendationTitle: "GỢI Ý DÀNH CHO BẠN",
+    recommendationTitle: "Gợi ý dành cho bạn",
     allProductsLabel: "Xem tất cả",
   },
   footer: {

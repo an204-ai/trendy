@@ -18,6 +18,7 @@ import { StaffCategoriesPage, StaffProductsPage, StaffPromotionsPage } from "./f
 import { StaffChatPage } from "./features/staff/StaffChatPage.jsx";
 import CustomerChatWidget from "./features/customer/CustomerChatWidget.jsx";
 import { createStaffUser, getMyOrder, getMyOrders, getStaffOrder, getStaffOrders, login, loginStaff, loginWithGoogle, logout, logoutStaff, placeCodOrder, register, restoreSessions, updateMyProfile, updateStaffOrder } from "./shared/services/api.js";
+import { updatePageSeo } from "./shared/utils/seo.js";
 
 const loadLocal = (key, fallback) => {
   try { return JSON.parse(localStorage.getItem(key)) ?? fallback; } catch { return fallback; }
@@ -164,22 +165,99 @@ export default function App() {
   }, []);
   useEffect(() => {
     let title = pageTitles.home;
-    if (routePath === "/store") title = getProductMenuCategory(query.get("subCategory"))?.label || getProductMenuCategory(query.get("subCategory"))?.title || pageTitles.store[query.get("category")] || pageTitles.store.All;
-    else if (routePath === "/stores") title = pageTitles.stores;
-    else if (routePath === "/stories") title = pageTitles.stories;
-    else if (routePath.startsWith("/stories/")) title = getStory(routePath.split("/")[2])?.title || pageTitles.stories;
-    else if (routePath.startsWith("/product/")) title = getProduct(routePath.split("/")[2])?.name || pageTitles.product;
-    else if (routePath === "/cart") title = pageTitles.cart;
-    else if (routePath === "/checkout") title = pageTitles.checkout;
-    else if (routePath === "/legal") title = pageTitles.legal;
-    else if (routePath === "/privacy") title = pageTitles.privacy;
-    else if (routePath === "/order-complete") title = pageTitles.complete;
-    else if (routePath.startsWith("/account")) title = routePath.includes("register") ? "Đăng ký" : routePath.includes("login") ? "Đăng nhập" : routePath.includes("wishlist") ? "Yêu thích" : routePath.includes("profile") ? "Hồ sơ" : "Đơn hàng";
-    else if (routePath === "/admin") title = "Tổng quan";
-    else if (routePath === "/admin/staff") title = "Nhân viên";
-    else if (routePath.startsWith("/staff")) title = routePath === "/staff/login" ? "Đăng nhập nội bộ" : ({ "/staff/orders": "Đơn hàng", "/staff/products": "Sản phẩm", "/staff/categories": "Danh mục", "/staff/promotions": "Khuyến mãi", "/staff/customers": "Khách hàng", "/staff/chat": "Chăm sóc khách hàng" }[routePath] || "Khu vực nội bộ");
-    document.title = `${title} — ${getStorefrontContent().siteName}`;
-  }, [routePath, query]);
+    let description = "Khám phá các thiết kế kính cận, kính thời trang và tròng kính cao cấp tại Mắt Kính Trendy. Trải nghiệm không gian đo mắt chuyên sâu tại TP. Hồ Chí Minh.";
+    let image = "/images/og-banner.jpg";
+    let type = "website";
+    let jsonLd = null;
+
+    if (routePath === "/") {
+      title = "Trang chủ";
+    } else if (routePath === "/store") {
+      const subCat = getProductMenuCategory(query.get("subCategory"));
+      const catKey = query.get("category");
+      title = subCat?.label || subCat?.title || pageTitles.store[catKey] || pageTitles.store.All;
+      description = catKey === "kinh-can"
+        ? "Bộ sưu tập kính cận cao cấp, gọng acetate và kim loại thanh lịch tại Mắt Kính Trendy."
+        : catKey === "kinh-thoi-trang"
+          ? "Bộ sưu tập kính thời trang, kính râm chống tia UV với sắc độ đặc trưng."
+          : "Khám phá toàn bộ các mẫu kính cận và kính thời trang cao cấp tại Mắt Kính Trendy.";
+    } else if (routePath === "/stores") {
+      title = pageTitles.stores;
+      description = "Ghé thăm cửa hàng Mắt Kính Trendy tại 37 Nguyễn Gia Trí, Bình Thạnh, TP. Hồ Chí Minh để trải nghiệm đo mắt chuyên sâu và thử kính trực tiếp.";
+      image = "/images/storefront-trendy.jpg";
+    } else if (routePath === "/stories") {
+      title = pageTitles.stories;
+      description = "Khám phá câu chuyện về chất liệu, sắc màu và nghệ thuật chế tác kính mắt thủ công tại Mắt Kính Trendy.";
+      image = "/images/stories/materials-hero.jpg";
+    } else if (routePath.startsWith("/stories/")) {
+      const story = getStory(routePath.split("/")[2]);
+      title = story?.title || pageTitles.stories;
+      description = story?.intro || "Chất liệu và nghệ thuật chế tác tại Mắt Kính Trendy.";
+      image = story?.hero || story?.cardImage || "/images/og-banner.jpg";
+      type = "article";
+    } else if (routePath.startsWith("/product/")) {
+      const product = getProduct(routePath.split("/")[2]);
+      if (product) {
+        title = product.name;
+        description = (product.description || "").split("\n")[0] || `${product.name} — Thiết kế kính mắt cao cấp tại Mắt Kính Trendy.`;
+        image = product.front || product.image || (product.images && product.images[0]?.url) || "/images/og-banner.jpg";
+        type = "product";
+        jsonLd = {
+          "@context": "https://schema.org",
+          "@type": "Product",
+          name: product.name,
+          image: image.startsWith("http") ? image : `https://trendyeye.vn${image.startsWith("/") ? "" : "/"}${image}`,
+          description: product.description || product.name,
+          sku: product.sku,
+          brand: {
+            "@type": "Brand",
+            name: "Gentle Monster",
+          },
+          offers: {
+            "@type": "Offer",
+            url: `https://trendyeye.vn/product/${product.slug}`,
+            priceCurrency: "VND",
+            price: product.price,
+            availability: "https://schema.org/InStock",
+            itemCondition: "https://schema.org/NewCondition",
+          },
+        };
+      } else {
+        title = pageTitles.product;
+      }
+    } else if (routePath === "/cart") {
+      title = pageTitles.cart;
+      description = "Túi hàng của bạn tại Mắt Kính Trendy.";
+    } else if (routePath === "/checkout") {
+      title = pageTitles.checkout;
+      description = "Thanh toán an toàn đơn hàng kính mắt tại Mắt Kính Trendy.";
+    } else if (routePath === "/legal") {
+      title = pageTitles.legal;
+      description = "Thông tin pháp lý và điều khoản mua sắm tại Mắt Kính Trendy.";
+    } else if (routePath === "/privacy") {
+      title = pageTitles.privacy;
+      description = "Chính sách bảo mật thông tin khách hàng tại Mắt Kính Trendy.";
+    } else if (routePath === "/order-complete") {
+      title = pageTitles.complete;
+    } else if (routePath.startsWith("/account")) {
+      title = routePath.includes("register") ? "Đăng ký" : routePath.includes("login") ? "Đăng nhập" : routePath.includes("wishlist") ? "Yêu thích" : routePath.includes("profile") ? "Hồ sơ" : "Đơn hàng";
+    } else if (routePath === "/admin") {
+      title = "Tổng quan";
+    } else if (routePath === "/admin/staff") {
+      title = "Nhân viên";
+    } else if (routePath.startsWith("/staff")) {
+      title = routePath === "/staff/login" ? "Đăng nhập nội bộ" : ({ "/staff/orders": "Đơn hàng", "/staff/products": "Sản phẩm", "/staff/categories": "Danh mục", "/staff/promotions": "Khuyến mãi", "/staff/customers": "Khách hàng", "/staff/chat": "Chăm sóc khách hàng" }[routePath] || "Khu vực nội bộ");
+    }
+
+    updatePageSeo({
+      title,
+      description,
+      image,
+      url: route,
+      type,
+      jsonLd,
+    });
+  }, [routePath, query, catalogVersion]);
 
   const addToCart = (product, variantSku, quantity = 1) => {
     const selectedVariant = getProductVariant(product, variantSku);
