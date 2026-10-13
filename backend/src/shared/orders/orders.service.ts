@@ -7,6 +7,7 @@ import { OutboxPublisher } from "../messaging/outbox.publisher";
 import { OrderQueueService } from "../messaging/order-queue.service";
 import { CreateOrderDto, CreateStaffOrderDto, UpdateOrderDto } from "./orders.dto";
 import { executeOrderCreation, OrderCreationResult } from "./order-creation.processor";
+import { RedisService } from "../redis/redis.service";
 
 const transitions: Record<OrderStatus, OrderStatus[]> = {
   RECEIVED: ["PENDING_CONFIRMATION", "CANCELLED"],
@@ -28,6 +29,7 @@ export class OrdersService {
     @InjectRepository(Promotion) private readonly promotions: Repository<Promotion>,
     @Optional() private readonly outboxPublisher?: OutboxPublisher,
     @Optional() private readonly orderQueue?: OrderQueueService,
+    @Optional() private readonly redis?: RedisService,
   ) {}
 
   async checkPromotion(customerId: string, code: string, subtotal: number) {
@@ -118,6 +120,7 @@ export class OrdersService {
     }
 
     // 4. Trả về thông tin đơn hàng đã tạo thành công
+    await this.redis?.delByPattern("cache:catalog:*");
     if (!customer || actor.role !== UserRole.CUSTOMER) {
       return this.getForStaff(result.orderCode!);
     }

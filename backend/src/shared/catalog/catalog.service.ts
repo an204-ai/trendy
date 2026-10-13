@@ -4,6 +4,8 @@ import { DataSource, ILike, In, Repository } from "typeorm";
 import { Product, ProductCategory, ProductCategoryLink, ProductImage, ProductVariant } from "../database/entities";
 import { CreateCategoryDto, CreateProductDto, ProductVariantInputDto, UpdateCategoryDto, UpdateProductDto } from "./catalog.dto";
 
+import { RedisService } from "../redis/redis.service";
+
 const productRelations = { variants: true, images: true, categoryLinks: { category: true } } as const;
 const slugify = (value: string) => value.trim().toLocaleLowerCase("vi").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/đ/g, "d").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 const withoutFrameShape = (specifications?: Record<string, unknown> | null) => {
@@ -19,22 +21,42 @@ export class CatalogService {
     private readonly dataSource: DataSource,
     @InjectRepository(Product) private readonly products: Repository<Product>,
     @InjectRepository(ProductCategory) private readonly categories: Repository<ProductCategory>,
+    private readonly redis: RedisService,
   ) {}
 
+  async invalidateCatalogCache(): Promise<void> {
+    await this.redis.delByPattern("cache:catalog:*");
+  }
+
   async listProducts() {
+    const cacheKey = "cache:catalog:products";
+    const cached = await this.redis.get<any[]>(cacheKey);
+    if (cached) return cached;
     const products = await this.products.find({ where: { active: true }, relations: productRelations, order: { createdAt: "DESC" } });
-    return products.map((product) => this.present(product));
+    const result = products.map((product) => this.present(product));
+    await this.redis.set(cacheKey, result, 600);
+    return result;
   }
 
   async getProduct(slug: string) {
+    const cacheKey = `cache:catalog:product:${slug}`;
+    const cached = await this.redis.get<any>(cacheKey);
+    if (cached) return cached;
     const product = await this.products.findOne({ where: { slug, active: true }, relations: productRelations });
     if (!product) throw new NotFoundException("Không tìm thấy sản phẩm");
-    return this.present(product);
+    const result = this.present(product);
+    await this.redis.set(cacheKey, result, 600);
+    return result;
   }
 
   async listCategories() {
+    const cacheKey = "cache:catalog:categories";
+    const cached = await this.redis.get<any[]>(cacheKey);
+    if (cached) return cached;
     const categories = await this.categories.find({ where: { active: true }, relations: { children: true }, order: { sortOrder: "ASC", title: "ASC" } });
-    return categories.filter((category) => !category.parentId).map((category) => ({ ...category, children: (category.children || []).filter((child) => child.active).sort((a, b) => a.sortOrder - b.sortOrder) }));
+    const result = categories.filter((category) => !category.parentId).map((category) => ({ ...category, children: (category.children || []).filter((child) => child.active).sort((a, b) => a.sortOrder - b.sortOrder) }));
+    await this.redis.set(cacheKey, result, 600);
+    return result;
   }
 
   async listAdminProducts() {
@@ -64,7 +86,9 @@ export class CatalogService {
       await this.replaceImages(manager, product, dto.images);
       await this.replaceVariants(manager, product, dto.variants);
       const saved = await products.findOne({ where: { id: product.id }, relations: productRelations });
-      return this.present(saved!, true);
+      const result = this.present(saved!, true);
+      await this.invalidateCatalogCache();
+      return result;
     });
   }
 
@@ -93,7 +117,9 @@ export class CatalogService {
       if (dto.images) await this.replaceImages(manager, product, dto.images);
       if (dto.variants) await this.replaceVariants(manager, product, dto.variants);
       const saved = await products.findOne({ where: { id: product.id }, relations: productRelations });
-      return this.present(saved!, true);
+      const result = this.present(saved!, true);
+      await this.invalidateCatalogCache();
+      return result;
     });
   }
 
@@ -101,6 +127,7 @@ export class CatalogService {
     const product = await this.products.findOneBy({ id });
     if (!product) throw new NotFoundException("Không tìm thấy sản phẩm");
     await this.products.delete({ id });
+    await this.invalidateCatalogCache();
     return { id, deleted: true };
   }
 
@@ -110,6 +137,7 @@ export class CatalogService {
     if (!variant) throw new NotFoundException("Không tìm thấy biến thể sản phẩm");
     variant.stockOnHand = stockOnHand;
     await repo.save(variant);
+    await this.invalidateCatalogCache();
     return { productId, sku, stockOnHand: variant.stockOnHand };
   }
 
@@ -124,7 +152,9 @@ export class CatalogService {
     if (existing) throw new ConflictException("Mã danh mục đã được sử dụng");
     if (dto.parentId) await this.ensureActiveParent(dto.parentId);
     const category = this.categories.create({ id, title: dto.title.trim(), label: dto.label?.trim() || dto.title.trim(), parentId: dto.parentId || null, sortOrder: dto.sortOrder ?? 0, active: true });
-    return this.categories.save(category);
+    const saved = await this.categories.save(category);
+    await this.invalidateCatalogCache();
+    return saved;
   }
 
   async updateCategory(id: string, dto: UpdateCategoryDto) {
@@ -146,7 +176,9 @@ export class CatalogService {
     if (dto.label !== undefined) category.label = dto.label.trim() || category.title;
     if (dto.sortOrder !== undefined) category.sortOrder = dto.sortOrder;
     if (dto.active !== undefined) category.active = dto.active;
-    return this.categories.save(category);
+    const saved = await this.categories.save(category);
+    await this.invalidateCatalogCache();
+    return saved;
   }
 
   async deleteCategory(id: string) {
@@ -172,6 +204,7 @@ export class CatalogService {
       for (const categoryId of [...ids].sort((a, b) => descendants.get(b)! - descendants.get(a)!)) {
         await categories.delete({ id: categoryId });
       }
+      await this.invalidateCatalogCache();
       return { id, deleted: true };
     });
   }

@@ -12,10 +12,12 @@ import { AdminModule } from "./admin/admin.module";
 import { HealthController } from "./shared/health/health.controller";
 import { MessagingModule } from "./shared/messaging/messaging.module";
 import { ChatModule } from "./shared/chat/chat.module";
+import { RedisModule } from "./shared/redis/redis.module";
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
+    RedisModule,
     ThrottlerModule.forRootAsync({
       inject: [ConfigService],
       useFactory: (config: ConfigService) => [
