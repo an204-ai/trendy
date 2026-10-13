@@ -28,6 +28,47 @@ export class CatalogService {
     await this.redis.delByPattern("cache:catalog:*");
   }
 
+  async getSitemapXml(): Promise<string> {
+    const cacheKey = "cache:catalog:sitemap";
+    const cached = await this.redis.get<string>(cacheKey);
+    if (cached) return cached;
+
+    const products = await this.products.find({
+      where: { active: true },
+      select: ["slug", "updatedAt"],
+      order: { updatedAt: "DESC" },
+    });
+
+    const staticUrls = [
+      { loc: "https://trendyeye.vn/", changefreq: "daily", priority: "1.0" },
+      { loc: "https://trendyeye.vn/store", changefreq: "daily", priority: "0.9" },
+      { loc: "https://trendyeye.vn/store?category=kinh-can", changefreq: "daily", priority: "0.8" },
+      { loc: "https://trendyeye.vn/store?category=kinh-thoi-trang", changefreq: "daily", priority: "0.8" },
+      { loc: "https://trendyeye.vn/stores", changefreq: "weekly", priority: "0.8" },
+      { loc: "https://trendyeye.vn/stories", changefreq: "weekly", priority: "0.7" },
+      { loc: "https://trendyeye.vn/stories/chat-lieu-sac-mau", changefreq: "monthly", priority: "0.6" },
+      { loc: "https://trendyeye.vn/stories/nghe-thuat-che-tac", changefreq: "monthly", priority: "0.6" },
+      { loc: "https://trendyeye.vn/legal", changefreq: "monthly", priority: "0.4" },
+      { loc: "https://trendyeye.vn/privacy", changefreq: "monthly", priority: "0.4" },
+    ];
+
+    let xml = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n`;
+
+    for (const item of staticUrls) {
+      xml += `  <url>\n    <loc>${item.loc}</loc>\n    <changefreq>${item.changefreq}</changefreq>\n    <priority>${item.priority}</priority>\n  </url>\n`;
+    }
+
+    for (const product of products) {
+      const lastmod = product.updatedAt ? new Date(product.updatedAt).toISOString().split("T")[0] : new Date().toISOString().split("T")[0];
+      xml += `  <url>\n    <loc>https://trendyeye.vn/product/${product.slug}</loc>\n    <lastmod>${lastmod}</lastmod>\n    <changefreq>weekly</changefreq>\n    <priority>0.8</priority>\n  </url>\n`;
+    }
+
+    xml += `</urlset>`;
+
+    await this.redis.set(cacheKey, xml, 3600);
+    return xml;
+  }
+
   async listProducts() {
     const cacheKey = "cache:catalog:products";
     const cached = await this.redis.get<any[]>(cacheKey);
