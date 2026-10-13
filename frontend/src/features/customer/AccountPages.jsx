@@ -408,6 +408,7 @@ function GoogleSignInButton({ onCredential, busy }) {
   const buttonRef = useRef(null);
   const callbackRef = useRef(onCredential);
   const nonceRef = useRef("");
+  const [hasGoogleIframe, setHasGoogleIframe] = useState(false);
   callbackRef.current = onCredential;
   const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID?.trim();
 
@@ -428,22 +429,31 @@ function GoogleSignInButton({ onCredential, busy }) {
       buttonRef.current.replaceChildren();
       if (!nonceRef.current) nonceRef.current = crypto.randomUUID();
 
-      identity.initialize({
-        client_id: clientId,
-        nonce: nonceRef.current,
-        callback: (response) => callbackRef.current?.({ credential: response.credential, nonce: nonceRef.current }),
-      });
+      try {
+        identity.initialize({
+          client_id: clientId,
+          nonce: nonceRef.current,
+          callback: (response) => callbackRef.current?.({ credential: response.credential, nonce: nonceRef.current }),
+        });
 
-      identity.renderButton(buttonRef.current, {
-        type: "standard",
-        theme: "outline",
-        size: "large",
-        shape: "pill",
-        text: "continue_with",
-        logo_alignment: "left",
-        locale: "vi",
-        width: buttonWidth,
-      });
+        identity.renderButton(buttonRef.current, {
+          type: "standard",
+          theme: "outline",
+          size: "large",
+          shape: "pill",
+          text: "continue_with",
+          logo_alignment: "left",
+          locale: "vi",
+          width: buttonWidth,
+        });
+
+        setTimeout(() => {
+          if (!cancelled && buttonRef.current) {
+            const hasIframe = Boolean(buttonRef.current.querySelector("iframe"));
+            setHasGoogleIframe(hasIframe);
+          }
+        }, 400);
+      } catch (_) {}
     };
 
     if (window.google?.accounts?.id) {
@@ -483,20 +493,31 @@ function GoogleSignInButton({ onCredential, busy }) {
     };
   }, [clientId]);
 
-  if (!clientId) {
-    return (
-      <div ref={containerRef} className={`google-signin ${busy ? "is-disabled" : ""}`}>
-        <button type="button" onClick={() => callbackRef.current?.({ credential: "", nonce: "" })} disabled={busy}>
+  const handleFallbackClick = () => {
+    const identity = window.google?.accounts?.id;
+    if (identity) {
+      try {
+        identity.prompt();
+        return;
+      } catch (_) {}
+    }
+    callbackRef.current?.({ credential: "", nonce: "" });
+  };
+
+  return (
+    <div ref={containerRef} className={`google-signin ${busy ? "is-disabled" : ""}`}>
+      {!hasGoogleIframe && (
+        <button type="button" onClick={handleFallbackClick} disabled={busy}>
           <GoogleMark />
           <span>Tiếp tục với Google</span>
         </button>
-        <small>Thêm Google Client ID để bật đăng nhập Google.</small>
-      </div>
-    );
-  }
-  return (
-    <div ref={containerRef} className={`google-signin ${busy ? "is-disabled" : ""}`}>
-      <div ref={buttonRef} className="google-signin-button" />
+      )}
+      <div
+        ref={buttonRef}
+        className="google-signin-button"
+        style={{ display: hasGoogleIframe ? "flex" : "none" }}
+      />
+      {!clientId && <small>Thêm Google Client ID để bật đăng nhập Google.</small>}
     </div>
   );
 }
